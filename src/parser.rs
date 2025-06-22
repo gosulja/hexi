@@ -1,6 +1,6 @@
+use crate::ast::VarDecl;
 use crate::lexer::{Lexer, Token, TokenType};
 use crate::ast::{Expr, Call};
-use crate::ast::Expr::Number;
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
@@ -52,10 +52,11 @@ impl<'a> Parser<'a> {
     pub fn parse_expr(&mut self) -> Result<Expr, String> {
         match &self.current {
             Some(t) => match t.token_type {
+                TokenType::Val => self.parse_var_decl(),
                 TokenType::Ident => self.parse_identifier(),    // is this a function call or reference to identifier
                 TokenType::String => self.parse_string(),
                 TokenType::Number => self.parse_number(),
-                _ => Err(format!("unexpected tokennnnn {:?}", t))
+                _ => Err(format!("unexpected token {:?}", t))
             }
             None => Err("unexpected eof".to_string())
         }
@@ -75,10 +76,13 @@ impl<'a> Parser<'a> {
         // advance to the next token
         self.advance();
 
-        // if the next token is a ( then treat it as a function call
+        // if the next token is a '(' then treat it as a function call
         if self.check(&TokenType::LParen) {
             // pass the name of the function
             self.parse_call(name)
+        // // if the next token is a '=' then treat it as a variable declaration
+        // } else if self.check(&TokenType::Equals) {
+        //     self.parse_var_decl(name)
         } else {
             Ok(Expr::Identifier(name))
         }
@@ -106,8 +110,23 @@ impl<'a> Parser<'a> {
         let args = if self.check(&TokenType::RParen) { Vec::new() } else { self.parse_args()? };
 
         self.consume(TokenType::RParen)?;
+        self.consume(TokenType::Semi)?;
 
         Ok(Expr::Call(Call { name, args }))
+    }
+
+    fn parse_var_decl(&mut self) -> Result<Expr, String> {
+        self.consume(TokenType::Val)?;
+
+        let name = self.consume(TokenType::Ident)?.lexeme;
+
+        self.consume(TokenType::Equals)?;
+
+        let value = self.parse_expr()?;
+
+        self.consume(TokenType::Semi)?;
+
+        Ok(Expr::VarDecl(VarDecl::new(name, value)))
     }
 
     fn parse_args(&mut self) -> Result<Vec<Expr>, String> {
@@ -143,6 +162,7 @@ impl<'a> Parser<'a> {
     fn parse_string(&mut self) -> Result<Expr, String> {
         let strr = self.current_lex().unwrap().clone();
         self.advance();
+
         Ok(Expr::String(strr))
     }
 }

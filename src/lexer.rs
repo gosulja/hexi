@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     Ident,
@@ -6,7 +8,9 @@ pub enum TokenType {
     LParen,
     RParen,
     Comma,
+    Equals,
     Semi,
+    Val,        // variable declaration
     Eof,
 }
 
@@ -23,11 +27,16 @@ fn make_token(token_type: TokenType, lexeme: String) -> Token {
 pub struct Lexer<'a> {
     source: &'a str,
     pos: usize,
+    keywords: HashMap<&'a str, TokenType>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Lexer {
-        Lexer { source, pos: 0 }
+        let mut keywords = HashMap::new();
+
+        keywords.insert("val", TokenType::Val);
+
+        Lexer { source, pos: 0, keywords }
     }
 
     pub fn next(self: &mut Lexer<'a>) -> Option<Token> {
@@ -58,6 +67,9 @@ impl<'a> Lexer<'a> {
         } else if c == ',' {
             self.advance();
             Some(make_token(TokenType::Comma, ",".to_string()))
+        } else if c == '=' {
+            self.advance();
+            Some(make_token(TokenType::Equals, "=".to_string()))
         } else {
             self.advance();
             self.next()
@@ -123,6 +135,13 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        make_token(TokenType::Ident, self.source[start..self.pos].to_string())
+        let ident = self.source[start..self.pos].to_string();
+
+        if self.keywords.contains_key(ident.as_str()) {
+            let tok_type = self.keywords.get(ident.as_str()).unwrap().clone();
+            make_token(tok_type, ident)
+        } else {
+            make_token(TokenType::Ident, self.source[start..self.pos].to_string())
+        }
     }
 }

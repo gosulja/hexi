@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Call};
+use crate::ast::{Expr, Call, VarDecl};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +45,7 @@ impl Interpreter {
             Expr::Number(n) => Ok(Value::Number(*n)),
             Expr::Identifier(name) => self.vars.get(name).cloned().ok_or_else(|| format!("undefined variable or reference '{}'", name)),
             Expr::Call(c) => self.exec_call(c),
+            Expr::VarDecl(v) => self.exec_var_decl(v),
             Expr::String(s) => Ok(Value::String(s.to_string()))
         }
     }
@@ -61,10 +62,26 @@ impl Interpreter {
         }
     }
 
+    fn exec_var_decl(&mut self, var: &VarDecl) -> Result<Value, String> {
+        if self.vars.contains_key(&var.name) {
+            Err(format!("variable '{}' already defined!", var.name))
+        } else {
+            let value = self.evaluate(var.value.as_ref())?;
+            self.vars.insert(var.name.clone(), value);
+            Ok(Value::Nil)
+        }
+    }
+
     fn exec_mul(&mut self, exprs: &[Expr]) -> Result<Vec<Value>, String> {
         let mut results = Vec::new();
         for e in exprs { results.push(self.evaluate(e)?); }
         Ok(results)
+    }
+
+    pub fn dbg_print_variables(&self) {
+        for (name, value) in self.vars.clone().into_iter() {
+            println!("{} = {}", name, value);
+        }
     }
 }
 
