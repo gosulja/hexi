@@ -1,6 +1,5 @@
 use crate::ast::{Expr, Call};
 use std::collections::HashMap;
-use std::fmt::format;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -75,7 +74,7 @@ fn nprint(args: &[Value]) -> Result<Value, String> {
 
         print!("{}", a);
     }
-    
+
     println!();
     Ok(Value::Nil)
 }
