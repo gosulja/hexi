@@ -7,3 +7,11 @@ The Hex language compiler & interpreter.
 ```
 print 42
 ```
+
+### Second commit (same day)
+* Correct argument parsing implemented.
+* No longer hard coded function call checks
+* Strings
+```
+print("hey dude")
+```
