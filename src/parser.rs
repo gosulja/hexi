@@ -112,7 +112,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::RParen)?;
         self.consume(TokenType::Semi)?;
 
-        Ok(Expr::Call(Call { name, args }))
+        Ok(Expr::Call(Call::new( name, args )))
     }
 
     fn parse_var_decl(&mut self) -> Result<Expr, String> {
