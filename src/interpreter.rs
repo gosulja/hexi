@@ -1,9 +1,10 @@
 use crate::ast::{Expr, Call};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
+    String(String),
     Nil,
 }
 
@@ -11,6 +12,7 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Value::Number(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "{}", s),
             Value::Nil => write!(f, "nil"),
         }
     }
@@ -41,9 +43,9 @@ impl Interpreter {
     pub fn evaluate(&mut self, expr: &Expr) -> Result<Value, String> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
-            Expr::Identifier(name) => self.vars.get(name).cloned().ok_or_else(|| format!("undefined variable '{}'", name)),
+            Expr::Identifier(name) => self.vars.get(name).cloned().ok_or_else(|| format!("undefined variable or reference '{}'", name)),
             Expr::Call(c) => self.exec_call(c),
-            &Expr::String(_) => todo!(),
+            Expr::String(s) => Ok(Value::String(s.to_string()))
         }
     }
 

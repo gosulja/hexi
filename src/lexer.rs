@@ -2,6 +2,7 @@
 pub enum TokenType {
     Ident,
     Number,
+    String,
     LParen,
     RParen,
     Comma,
@@ -43,8 +44,20 @@ impl<'a> Lexer<'a> {
             Some(self.process_identifier())
         } else if c.is_numeric() {
             Some(self.process_number())
+        } else if c == '"' || c == '\'' {
+            Some(self.process_string())
         } else if c == ';' {
+            self.advance();
             Some(make_token(TokenType::Semi, ";".to_string()))
+        } else if c == '(' {
+            self.advance();
+            Some(make_token(TokenType::LParen, "(".to_string()))
+        } else if c == ')' {
+            self.advance();
+            Some(make_token(TokenType::RParen, ")".to_string()))
+        } else if c == ',' {
+            self.advance();
+            Some(make_token(TokenType::Comma, ",".to_string()))
         } else {
             self.advance();
             self.next()
@@ -57,6 +70,32 @@ impl<'a> Lexer<'a> {
 
     fn advance(&mut self) {
         self.pos += 1;
+    }
+
+    fn process_string(&mut self) -> Token {
+        let opening = self.current().unwrap();
+        self.advance();
+
+        let start = self.pos;
+        // self.advance();
+
+        while let Some(c) = self.current() {
+            if c == opening {
+                break;
+            }
+
+            self.advance();
+        }
+
+        let strval = (start <= self.pos)
+            .then(|| self.source[start..self.pos].to_string())
+            .unwrap_or_default();
+
+        self.current()
+            .filter(|&c| c == opening)
+            .map(|_| self.advance());
+
+        make_token(TokenType::String, strval)
     }
     
     fn process_number(&mut self) -> Token {

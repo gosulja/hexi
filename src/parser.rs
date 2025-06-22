@@ -1,5 +1,6 @@
 use crate::lexer::{Lexer, Token, TokenType};
 use crate::ast::{Expr, Call};
+use crate::ast::Expr::Number;
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
@@ -52,6 +53,7 @@ impl<'a> Parser<'a> {
         match &self.current {
             Some(t) => match t.token_type {
                 TokenType::Ident => self.parse_identifier(),    // is this a function call or reference to identifier
+                TokenType::String => self.parse_string(),
                 TokenType::Number => self.parse_number(),
                 _ => Err(format!("unexpected tokennnnn {:?}", t))
             }
@@ -63,31 +65,72 @@ impl<'a> Parser<'a> {
         let name = self.current_lex().unwrap().clone();
 
         // explicitly check if it's a print call
-        if name == "print" {
-            self.parse_call()
+        // if name == "print" {
+        //     self.parse_call()
+        // } else {
+        //     self.advance();
+        //     Ok(Expr::Identifier(name))
+        // }
+
+        // advance to the next token
+        self.advance();
+
+        // if the next token is a ( then treat it as a function call
+        if self.check(&TokenType::LParen) {
+            // pass the name of the function
+            self.parse_call(name)
         } else {
-            self.advance();
             Ok(Expr::Identifier(name))
         }
     }
 
-    fn parse_call(&mut self) -> Result<Expr, String> {
-        let name = self.current_lex().unwrap().clone();
-        self.advance();
+    fn parse_call(&mut self, name: String) -> Result<Expr, String> {
+        // self.advance();
+        // let mut args: Vec<Expr> = Vec::new();
 
-        let mut args: Vec<Expr> = Vec::new();
+        // for now i'll just expect a number
+        // match &self.current {
+        //     Some(t) => match t.token_type {
+        //         TokenType::Number => args.push(self.parse_expr()?),
+        //         _ => return Err(format!("parse_call::unexpected token {:?}", t))
+        //     }
+        //     None => return Err(format!("unexpected eof"))
+        // }
 
-        // for now we'll just expect a number
-        match &self.current {
-            Some(t) => match t.token_type {
-                TokenType::Number => args.push(self.parse_expr()?),
-                _ => return Err(format!("unexpected token {:?}", t))
-            }
-            None => return Err(format!("unexpected eof"))
+        // this was a test to see if args are handled well
+        // args.push(Number(23f64));
+
+        // cleaned up the args parsing section.
+        self.consume(TokenType::LParen)?;
+
+        let args = if self.check(&TokenType::RParen) { Vec::new() } else { self.parse_args()? };
+
+        self.consume(TokenType::RParen)?;
+
+        Ok(Expr::Call(Call { name, args }))
+    }
+
+    fn parse_args(&mut self) -> Result<Vec<Expr>, String> {
+        let mut args = Vec::new();
+
+        // first arg be pused
+        args.push(self.parse_expr()?);
+
+        // parse arg after comma, until it hits a )
+        while self.check(&TokenType::Comma) {
+            self.consume(TokenType::Comma)?; // go past comma
+            // now we're expecting an expression after the comma
+            // (1, 2, 3)
+            //   ^ _
+            // at right paren? stop parsing args, we're done
+            if self.check(&TokenType::RParen) { break; }
+
+            // then push the parsed expr as an arg
+            args.push(self.parse_expr()?);
         }
 
-        self.advance();
-        Ok(Expr::Call(Call { name, args }))
+        // return args vec as ok
+        Ok(args)
     }
 
     fn parse_number(&mut self) -> Result<Expr, String> {
@@ -95,5 +138,11 @@ impl<'a> Parser<'a> {
         self.advance();
 
         Ok(Expr::Number(num.parse().unwrap()))
+    }
+
+    fn parse_string(&mut self) -> Result<Expr, String> {
+        let strr = self.current_lex().unwrap().clone();
+        self.advance();
+        Ok(Expr::String(strr))
     }
 }
