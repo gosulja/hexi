@@ -10,6 +10,20 @@ pub enum Expr {
     Assignment(Assignment),
     BinaryOp(BinaryOp),
     UnaryOp(UnaryOp),
+    Block(Block),
+    If(If),
+}
+
+#[derive(Debug, Clone)]
+pub struct Block {
+    pub exprs: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct If {
+    pub cond: Box<Expr>,
+    pub block: Block,
+    pub else_block: Option<Block>
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +56,22 @@ pub struct BinaryOp {
     pub left: Box<Expr>,
     pub right: Box<Expr>,
     pub op: TokenType,
+}
+
+impl Block {
+    pub fn new(exprs: Vec<Expr>) -> Block {
+        Block { exprs }
+    }
+}
+
+impl If {
+    pub fn new(cond: Expr, block: Block, else_block: Option<Block>) -> Self {
+        If {
+            cond: Box::new(cond),
+            block,
+            else_block,
+        }
+    }
 }
 
 impl UnaryOp {

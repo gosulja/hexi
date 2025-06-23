@@ -1,4 +1,4 @@
-use crate::ast::{Assignment, VarDecl, Expr, Call, BinaryOp, UnaryOp};
+use crate::ast::{Assignment, VarDecl, Expr, Call, BinaryOp, UnaryOp, If, Block};
 use crate::lexer::{Lexer, Token, TokenType};
 
 pub struct Parser<'a> {
@@ -37,8 +37,9 @@ impl<'a> Parser<'a> {
     // we can to have operations such as adding and subbing lower precedence than to mul and div, and mod.
     fn precedence(&self, token_type: TokenType) -> u8 {
         match token_type {
-            TokenType::Add | TokenType::Sub => 1,
-            TokenType::Mul | TokenType::Div | TokenType::Mod => 2,
+            TokenType::DblEquals => 1,      // any other relational ops
+            TokenType::Add | TokenType::Sub => 2,
+            TokenType::Mul | TokenType::Div | TokenType::Mod => 3,
             _ => 0,
         }
     }
@@ -47,7 +48,7 @@ impl<'a> Parser<'a> {
     fn is_binop(&self, token_type: TokenType) -> bool {
         matches!(token_type, TokenType::Add | TokenType::Sub |
             TokenType::Mul | TokenType::Div |
-            TokenType::Mod)
+            TokenType::Mod | TokenType::DblEquals)
     }
 
     fn current_lex(&self) -> Option<&String> {
@@ -117,6 +118,8 @@ impl<'a> Parser<'a> {
                 TokenType::String => self.parse_string(),
                 TokenType::Number => self.parse_number(),
                 TokenType::LParen => self.parse_grouped(),
+                TokenType::LBrace => Ok(Expr::Block(self.parse_block()?)),
+                TokenType::If => self.parse_if(),
                 _ => Err(format!("unexpected token {:?}", t))
             }
             None => Err("unexpected eof".to_string())
@@ -135,6 +138,41 @@ impl<'a> Parser<'a> {
         let expr = self.parse_bin_expr(0)?;
         self.consume(TokenType::RParen)?;
         Ok(expr)
+    }
+
+    fn parse_if(&mut self) -> Result<Expr, String> {
+        self.consume(TokenType::If)?;
+
+        let cond = self.parse_expr()?;
+        // dont gotta consume L brace, because blocks are started with {
+        let block = self.parse_block()?;
+        let else_block = if self.check(&TokenType::Else) {
+            self.consume(TokenType::Else)?;
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+
+        Ok(Expr::If(If::new(cond, block, else_block)))
+    }
+
+    fn parse_block(&mut self) -> Result<Block, String> {
+        self.consume(TokenType::LBrace)?;
+
+        // these really should be statements, but whatever
+        let mut exprs = Vec::new();
+        // parse until we reach the } or EOF
+        while !self.check(&TokenType::RBrace) && !self.check(&TokenType::Eof) {
+            exprs.push(self.parse_expr()?);
+
+            // optional semi
+            if self.check(&TokenType::Semi) {
+                self.advance();
+            }
+        }
+
+        self.consume(TokenType::RBrace)?;
+        Ok(Block::new(exprs))
     }
 
     fn parse_identifier(&mut self) -> Result<Expr, String> {

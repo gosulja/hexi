@@ -1,6 +1,7 @@
-use crate::ast::{Expr, Call, VarDecl, Assignment, BinaryOp, UnaryOp};
+use crate::ast::{Expr, Call, VarDecl, Assignment, BinaryOp, UnaryOp, If, Block};
 use crate::stdlib::{REGISTRY_STD};
 use std::collections::HashMap;
+use std::fmt::format;
 use crate::lexer::TokenType;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +83,34 @@ impl Interpreter {
             Expr::Assignment(a) => self.exec_assignment(a),
             Expr::BinaryOp(b) => self.exec_binary_op(b),
             Expr::UnaryOp(u) => self.exec_unary_op(u),
+            Expr::If(i) => self.exec_if(i),
+            Expr::Block(b) => self.exec_block(b),
         }
+    }
+
+    fn exec_if(&mut self, i: &If) -> Result<Value, String> {
+        let cond = self.evaluate(&i.cond)?;
+        // if statements should only allow conditions which are truthy
+        if cond.is_truthy() {
+            // execute the main block, so inside if cond { ... }
+            self.exec_block(&i.block)
+        } else if let Some(else_block) = &i.else_block {
+            // Else
+            self.exec_block(else_block)
+        } else {
+            // return nil
+            Ok(Value::Nil)
+        }
+    }
+
+    fn exec_block(&mut self, b: &Block) -> Result<Value, String> {
+        let mut last = Value::Nil;
+        // these are basically statements but im too lazy to refactor
+        for e in &b.exprs {
+            last = self.evaluate(e)?;
+        }
+
+        Ok(last)
     }
 
     fn exec_unary_op(&mut self, u: &UnaryOp) -> Result<Value, String> {
@@ -116,16 +144,39 @@ impl Interpreter {
         let left = self.evaluate(&b.left)?;
         let right = self.evaluate(&b.right)?;
 
-        match (left, right) {
-            (Value::Number(l), Value::Number(r)) => Ok(Value::Number(match b.op {
-                TokenType::Add => l + r,
-                TokenType::Sub => l - r,
-                TokenType::Mul => l * r,
-                TokenType::Div => l / r,
-                TokenType::Mod => l % r,
-                _ => return Err(format!("unsupported operator {:?}", b.op))
-            })),
-            _ => Err("can only perform binary operations on numbers".to_string())
+        match b.op {
+            TokenType::DblEquals => {
+                Ok(Value::Bool(left == right))
+            },
+
+            TokenType::Add | TokenType::Sub | TokenType::Mul | TokenType::Div | TokenType::Mod => {
+                match (left, right) {
+                    (Value::Number(l), Value::Number(r)) => {
+                        let result = match b.op {
+                            TokenType::Add => l + r,
+                            TokenType::Sub => l - r,
+                            TokenType::Mul => l * r,
+                            TokenType::Div => {
+                                if r == 0.0 {
+                                    return Err("division by zero".to_string());
+                                }
+                                l / r
+                            },
+                            TokenType::Mod => {
+                                if r == 0.0 {
+                                    return Err("modulo by zero".to_string());
+                                }
+                                l % r
+                            },
+                            _ => unreachable!(), // done
+                        };
+                        Ok(Value::Number(result))
+                    },
+                    _ => Err("arithmetic operations can only be performed on numbers".to_string())
+                }
+            },
+
+            _ => Err(format!("unsupported binary operator {:?}", b.op))
         }
     }
 
@@ -169,6 +220,39 @@ impl Value {
         match self {
             Value::String(s) => Ok(s),
             _ => Err(format!("{:?} is not a string", self)),
+        }
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Value::Bool(_))
+    }
+
+    pub fn as_bool_ref(&self) -> Option<bool> {
+        match self {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn is_true(&self) -> bool {
+        matches!(self, Value::Bool(true))
+    }
+
+    pub fn is_false(&self) -> bool {
+        matches!(self, Value::Bool(false))
+    }
+
+    pub fn equals_bool(&self, other: bool) -> bool {
+        match self {
+            Value::Bool(b) => *b == other,
+            _ => false,
+        }
+    }
+
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Bool(false) | Value::Nil => false,
+            _ => true,
         }
     }
 }

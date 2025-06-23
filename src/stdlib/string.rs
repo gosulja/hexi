@@ -3,7 +3,7 @@ use super::Module;
 
 fn len_nfn(args: &[Value]) -> Result<Value, String> {
     if args.len() != 1 {
-        return Err(format!("too many arguments for function string::len, got {}", args.len()))
+        return Err(format!("too many arguments or too little for function string::len, got {}, want 1", args.len()))
     }
 
     match &args[0] {
@@ -12,9 +12,129 @@ fn len_nfn(args: &[Value]) -> Result<Value, String> {
     }
 }
 
+fn upper_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!("too many arguments or too little for function string::len, got {}, want 1", args.len()))
+    }
+
+    match &args[0] {
+        Value::String(s) => Ok(Value::String(s.to_uppercase())),
+        _ => Err(format!("not a string in string::upper, got {}", args[0])),
+    }
+}
+
+fn lower_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!("too many arguments or too little for function string::lower, got {}, want 1", args.len()))
+    }
+
+    match &args[0] {
+        Value::String(s) => Ok(Value::String(s.to_lowercase())),
+        _ => Err(format!("not a string in string::lower, got {}", args[0])),
+    }
+}
+
+fn trim_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!("too many arguments or too little for function string::trim, got {}, want 1", args.len()))
+    }
+
+    match &args[0] {
+        Value::String(s) => Ok(Value::String(s.trim().to_string())),
+        _ => Err(format!("not a string in string::trim, got {}", args[0])),
+    }
+}
+
+fn starts_with_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(format!("too many arguments or too little for function string::starts_with, got {}, want 2", args.len()))
+    }
+
+    match (&args[0], &args[1]) {
+        (Value::String(s), Value::String(p)) => Ok(Value::Bool(s.starts_with(p))),
+        _ => Err(format!("not a string in string::trim, got {}", args[0])),
+    }
+}
+
+fn ends_with_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(format!("too many arguments or too little for function string::ends_with, got {}, want 2", args.len()))
+    }
+
+    match (&args[0], &args[1]) {
+        (Value::String(s), Value::String(p)) => Ok(Value::Bool(s.ends_with(p))),
+        _ => Err(format!("not a string in string::trim, got {}", args[0])),
+    }
+}
+
+fn contains_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(format!("too many arguments or too little for function string::contains, got {}, want 2", args.len()))
+    }
+
+    match (&args[0], &args[1]) {
+        (Value::String(s), Value::String(substr)) => Ok(Value::Bool(s.contains(substr))),
+        (Value::String(_), _) => Err(format!("string::contains expects second argument to be a string, got {}", args[1])),
+        _ => Err(format!("not a string in string::contains, got {}", args[0])),
+    }
+}
+
+fn replace_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err(format!("too many arguments or too little for function string::replace, got {}, want 3", args.len()));
+    }
+
+    match (&args[0], &args[1], &args[2]) {
+        (Value::String(s), Value::String(from), Value::String(to)) => {
+            Ok(Value::String(s.replace(from, to)))
+        },
+        (Value::String(_), Value::String(_), _) => {
+            Err(format!("string::replace expects third argument to be a string, got {}", args[2]))
+        },
+        (Value::String(_), _, _) => {
+            Err(format!("string::replace expects second argument to be a string, got {}", args[1]))
+        },
+        _ => Err(format!("string::replace expects first argument to be a string, got {}", args[0])),
+    }
+}
+
+fn sub_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err(format!("too many arguments or too little for function string::sub, got {}, want 3", args.len()));
+    }
+
+    match (&args[0], &args[1], &args[2]) {
+        (Value::String(s), Value::Number(start), Value::Number(end)) => {
+            let start_idx = *start as usize;
+            let end_idx = *end as usize;
+
+            if start_idx > s.len() || end_idx > s.len() || start_idx > end_idx {
+                return Err("string::sub: invalid indices".to_string());
+            }
+
+            Ok(Value::String(s[start_idx..end_idx].to_string()))
+        },
+        (Value::String(_), Value::Number(_), _) => {
+            Err(format!("string::sub expects third argument to be a number, got {}", args[2]))
+        },
+        (Value::String(_), _, _) => {
+            Err(format!("string::sub expects second argument to be a number, got {}", args[1]))
+        },
+        _ => Err(format!("string::sub expects first argument to be a string, got {}", args[0])),
+    }
+}
+
 pub const STRING_MOD: Module = Module {
     name: "string",
     funcs: &[
         ("len", len_nfn),
+        ("upper", upper_nfn),
+        ("lower", lower_nfn),
+        ("trim", trim_nfn),
+        ("starts_with", starts_with_nfn),
+        ("ends_with", ends_with_nfn),
+        ("contains", contains_nfn),
+        ("replace", replace_nfn),
+        ("substring", sub_nfn),
     ],
 };

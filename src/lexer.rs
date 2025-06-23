@@ -8,16 +8,21 @@ pub enum TokenType {
     LParen,
     RParen,
     Comma,
+    DblEquals,  // ==
     Equals,
     Semi,
     Val,        // variable declaration
     DblColon,   // ::
+    LBrace,     // {
+    RBrace,     // }
     Colon,
     Add,
     Sub,
     Mul,
     Div,
     Mod,
+    If,
+    Else,
     Eof,
 }
 
@@ -42,6 +47,8 @@ impl<'a> Lexer<'a> {
         let mut keywords = HashMap::new();
 
         keywords.insert("val", TokenType::Val);
+        keywords.insert("if", TokenType::If);
+        keywords.insert("else", TokenType::Else);
 
         Lexer { source, pos: 0, keywords }
     }
@@ -75,12 +82,18 @@ impl<'a> Lexer<'a> {
         } else if c == ')' {
             self.advance();
             Some(make_token(TokenType::RParen, ")".to_string()))
+        } else if c == '{' {
+            self.advance();
+            Some(make_token(TokenType::LBrace, "{".to_string()))
+        } else if c == '}' {
+            self.advance();
+            Some(make_token(TokenType::RBrace, "}".to_string()))
         } else if c == ',' {
             self.advance();
             Some(make_token(TokenType::Comma, ",".to_string()))
-        } else if c == '=' {
-            self.advance();
-            Some(make_token(TokenType::Equals, "=".to_string()))
+        // } else if c == '=' {
+        //     self.advance();
+        //     Some(make_token(TokenType::Equals, "=".to_string()))
         } else if c == '+' {
             self.advance();
             Some(make_token(TokenType::Add, "+".to_string()))
@@ -104,6 +117,30 @@ impl<'a> Lexer<'a> {
             } else {
                 Some(make_token(TokenType::Colon, ":".to_string()))
             }
+        } else if c == '=' {
+            self.advance();
+            if self.source.chars().nth(self.pos) == Some('=') {
+                self.advance();
+                Some(make_token(TokenType::DblEquals, "==".to_string()))
+            } else {
+                Some(make_token(TokenType::Equals, "=".to_string()))
+            }
+        // } else if c == '=' {
+        //     self.advance();
+        //     if self.peek() == Some('=') {
+        //         self.advance();
+        //         Some(make_token(TokenType::DblEquals, "==".to_string()))
+        //     } else {
+        //         Some(make_token(TokenType::Equals, "=".to_string()))
+        //     }
+        // } else if c == ':' {
+        //     self.advance();
+        //     if self.peek() == Some(':') {
+        //         self.advance();
+        //         Some(make_token(TokenType::DblColon, "::".to_string()))
+        //     } else {
+        //         Some(make_token(TokenType::Colon, ":".to_string()))
+        //     }
         } else {
             self.advance();
             self.next()
