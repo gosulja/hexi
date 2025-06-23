@@ -1,11 +1,13 @@
-use crate::ast::{Expr, Call, VarDecl, Assignment};
+use crate::ast::{Expr, Call, VarDecl, Assignment, BinaryOp, UnaryOp};
 use crate::stdlib::{REGISTRY_STD};
 use std::collections::HashMap;
+use crate::lexer::TokenType;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
     String(String),
+    Bool(bool),
     Nil,
 }
 
@@ -15,6 +17,7 @@ impl std::fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Nil => write!(f, "nil"),
+            Value::Bool(b) => write!(f, "{}", b),
         }
     }
 }
@@ -43,18 +46,18 @@ impl Interpreter {
                 let realname = format!("{}_{}", module.name, name);
                 self.natives.insert(realname.clone(), *fptr);
 
-                match (module.name, *name) {
-                    ("io", "print") | ("io", "println") | ("io", "input") => {
-                        self.natives.insert(name.to_string(), *fptr);
-                    }
-                    ("math", _) => {
-                        self.natives.insert(name.to_string(), *fptr);
-                    },
-                    ("string", "len") => {
-                        self.natives.insert(name.to_string(), *fptr);
-                    },
-                    _ => {}
-                }
+                // match (module.name, *name) {
+                //     ("io", "print") | ("io", "println") | ("io", "input") => {
+                //         self.natives.insert(name.to_string(), *fptr);
+                //     }
+                //     ("math", _) => {
+                //         self.natives.insert(name.to_string(), *fptr);
+                //     },
+                //     ("string", "len") => {
+                //         self.natives.insert(name.to_string(), *fptr);
+                //     },
+                //     _ => {}
+                // }
             }
         }
     }
@@ -76,7 +79,20 @@ impl Interpreter {
             Expr::Identifier(name) => self.vars.get(name).cloned().ok_or_else(|| format!("undefined variable or reference '{}'", name)),
             Expr::Call(c) => self.exec_call(c),
             Expr::VarDecl(v) => self.exec_var_decl(v),
-            Expr::Assignment(a) => self.exec_assignment(a)
+            Expr::Assignment(a) => self.exec_assignment(a),
+            Expr::BinaryOp(b) => self.exec_binary_op(b),
+            Expr::UnaryOp(u) => self.exec_unary_op(u),
+        }
+    }
+
+    fn exec_unary_op(&mut self, u: &UnaryOp) -> Result<Value, String> {
+        let operand = self.evaluate(&u.operand)?;
+        match u.op {
+            TokenType::Sub => match operand {
+                Value::Number(n) => Ok(Value::Number(-n)),  // negate numbers
+                _ => Err("negate unary operator only supported on numbers".to_string())
+            },
+            _ => Err(format!("unsupported unary operator {:?}", u.op))
         }
     }
 
@@ -93,6 +109,23 @@ impl Interpreter {
             } else {
                 Err(format!("undefined function '{}'", call.name))
             }
+        }
+    }
+
+    fn exec_binary_op(&mut self, b: &BinaryOp) -> Result<Value, String> {
+        let left = self.evaluate(&b.left)?;
+        let right = self.evaluate(&b.right)?;
+
+        match (left, right) {
+            (Value::Number(l), Value::Number(r)) => Ok(Value::Number(match b.op {
+                TokenType::Add => l + r,
+                TokenType::Sub => l - r,
+                TokenType::Mul => l * r,
+                TokenType::Div => l / r,
+                TokenType::Mod => l % r,
+                _ => return Err(format!("unsupported operator {:?}", b.op))
+            })),
+            _ => Err("can only perform binary operations on numbers".to_string())
         }
     }
 
@@ -126,6 +159,16 @@ impl Interpreter {
     pub fn dbg_print_variables(&self) {
         for (name, value) in self.vars.clone().into_iter() {
             println!("{} = {}", name, value);
+        }
+    }
+}
+
+// helper implementations
+impl Value {
+    pub fn as_string(self) -> Result<String, String> {
+        match self {
+            Value::String(s) => Ok(s),
+            _ => Err(format!("{:?} is not a string", self)),
         }
     }
 }

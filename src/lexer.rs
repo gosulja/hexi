@@ -13,6 +13,11 @@ pub enum TokenType {
     Val,        // variable declaration
     DblColon,   // ::
     Colon,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
     Eof,
 }
 
@@ -39,6 +44,10 @@ impl<'a> Lexer<'a> {
         keywords.insert("val", TokenType::Val);
 
         Lexer { source, pos: 0, keywords }
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.source.chars().nth(self.pos + 1)
     }
 
     pub fn next(self: &mut Lexer<'a>) -> Option<Token> {
@@ -72,6 +81,21 @@ impl<'a> Lexer<'a> {
         } else if c == '=' {
             self.advance();
             Some(make_token(TokenType::Equals, "=".to_string()))
+        } else if c == '+' {
+            self.advance();
+            Some(make_token(TokenType::Add, "+".to_string()))
+        } else if c == '-' {
+            self.advance();
+            Some(make_token(TokenType::Sub, "-".to_string()))
+        } else if c == '*' {
+            self.advance();
+            Some(make_token(TokenType::Mul, "*".to_string()))
+        } else if c == '/' {
+            self.advance();
+            Some(make_token(TokenType::Div, "/".to_string()))
+        } else if c == '%' {
+            self.advance();
+            Some(make_token(TokenType::Mod, "%".to_string()))
         } else if c == ':' {
             self.advance();
             if self.source.chars().nth(self.pos) == Some(':') {
@@ -122,12 +146,27 @@ impl<'a> Lexer<'a> {
     
     fn process_number(&mut self) -> Token {
         let start = self.pos;
-        
+        let mut float = false;  // flag for processing floating point numbers
+
+        // while let Some(c) = self.current() {
+        //     if c.is_numeric() {
+        //         self.advance();
+        //     } else {
+        //         break;
+        //     }
+        // }
+
+        // replaced previous processor with a more concise and simple one, this supports floating point numbers
         while let Some(c) = self.current() {
-            if c.is_numeric() {
-                self.advance();
-            } else {
-                break;
+            match c {
+                // is a number? advance if so
+                f if f.is_numeric() => self.advance(),
+                // if we encounter dot, and after it is a number, then process float
+                '.' if !float && self.peek().map_or(false, |n| n.is_numeric()) => {
+                    float = true;
+                    self.advance();
+                }
+                _ => break,
             }
         }
         

@@ -1,0 +1,7 @@
+val neg_sqrt_test = math::sqrt(-4)
+val neg_abs = math::abs(-100)
+val neg_power = math::pow(-2, 3)
+val neg_min_max = math::max(-10, -5)
+io::println(neg_abs)
+io::println(neg_power)
+io::println(neg_min_max)

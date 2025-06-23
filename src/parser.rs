@@ -1,4 +1,4 @@
-use crate::ast::{Assignment, VarDecl, Expr, Call};
+use crate::ast::{Assignment, VarDecl, Expr, Call, BinaryOp, UnaryOp};
 use crate::lexer::{Lexer, Token, TokenType};
 
 pub struct Parser<'a> {
@@ -34,6 +34,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // we can to have operations such as adding and subbing lower precedence than to mul and div, and mod.
+    fn precedence(&self, token_type: TokenType) -> u8 {
+        match token_type {
+            TokenType::Add | TokenType::Sub => 1,
+            TokenType::Mul | TokenType::Div | TokenType::Mod => 2,
+            _ => 0,
+        }
+    }
+
+    // is this going to be a binar operation??
+    fn is_binop(&self, token_type: TokenType) -> bool {
+        matches!(token_type, TokenType::Add | TokenType::Sub |
+            TokenType::Mul | TokenType::Div |
+            TokenType::Mod)
+    }
+
     fn current_lex(&self) -> Option<&String> {
         self.current.as_ref().map(|t| &t.lexeme)
     }
@@ -54,16 +70,71 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_expr(&mut self) -> Result<Expr, String> {
+        // match &self.current {
+        //     Some(t) => match t.token_type {
+        //         TokenType::Val => self.parse_var_decl(),
+        //         TokenType::Ident => self.parse_identifier(),    // is this a function call or reference to identifier
+        //         TokenType::String => self.parse_string(),
+        //         TokenType::Number => self.parse_number(),
+        //         _ => Err(format!("unexpected token {:?}", t))
+        //     }
+        //     None => Err("unexpected eof".to_string())
+        // }
+
+        self.parse_bin_expr(0)
+    }
+
+    fn parse_bin_expr(&mut self, precedence: u8) -> Result<Expr, String> {
+        let mut left = self.parse_prim()?;
+
+        while let Some(ref t) = self.current {
+            if !self.is_binop(t.clone().token_type) {
+                break;
+            }
+
+            let prec = self.precedence(t.clone().token_type);
+            if prec < precedence {
+                break;
+            }
+
+            let op = t.token_type.clone();
+            self.advance();
+
+            let right = self.parse_bin_expr(prec + 1)?;
+            left = Expr::BinaryOp(BinaryOp::new(left, right, op));
+        }
+
+        Ok(left)
+    }
+
+    // move to parse_prim, parsing exprs "atoms"
+    fn parse_prim(&mut self) -> Result<Expr, String> {
         match &self.current {
             Some(t) => match t.token_type {
+                TokenType::Sub => self.parse_unary(),
                 TokenType::Val => self.parse_var_decl(),
-                TokenType::Ident => self.parse_identifier(),    // is this a function call or reference to identifier
+                TokenType::Ident => self.parse_identifier(),
                 TokenType::String => self.parse_string(),
                 TokenType::Number => self.parse_number(),
+                TokenType::LParen => self.parse_grouped(),
                 _ => Err(format!("unexpected token {:?}", t))
             }
             None => Err("unexpected eof".to_string())
         }
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, String> {
+        let op = self.current.clone().unwrap().token_type.clone();
+        self.advance();
+        let operand = self.parse_prim()?;
+        Ok(Expr::UnaryOp(UnaryOp::new(operand, op)))
+    }
+
+    fn parse_grouped(&mut self) -> Result<Expr, String> {
+        self.consume(TokenType::LParen)?;
+        let expr = self.parse_bin_expr(0)?;
+        self.consume(TokenType::RParen)?;
+        Ok(expr)
     }
 
     fn parse_identifier(&mut self) -> Result<Expr, String> {
@@ -88,12 +159,12 @@ impl<'a> Parser<'a> {
             let fn_name = self.consume(TokenType::Ident)?.lexeme;
 
             // function call?
-            if self.check(&TokenType::LParen) {
-                return self.parse_mod_call(name, fn_name)
+            return if self.check(&TokenType::LParen) {
+                self.parse_mod_call(name, fn_name)
             } else {
                 // no module call but a reference to const perhaps?
                 // math::PI for example
-                return Ok(Expr::Identifier(format!("{}::{}", name, fn_name)))
+                Ok(Expr::Identifier(format!("{}::{}", name, fn_name)))
             }
         }
 
@@ -152,7 +223,7 @@ impl<'a> Parser<'a> {
     fn parse_assignment(&mut self, name: String) -> Result<Expr, String> {
         self.consume(TokenType::Equals)?;
 
-        let assignee = self.parse_expr()?;
+        let assignee = self.parse_bin_expr(0)?;
 
         // self.consume(TokenType::Semi)?;
 
@@ -177,7 +248,7 @@ impl<'a> Parser<'a> {
         let mut args = Vec::new();
 
         // first arg be pused
-        args.push(self.parse_expr()?);
+        args.push(self.parse_bin_expr(0)?);
 
         // parse arg after comma, until it hits a )
         while self.check(&TokenType::Comma) {
@@ -189,7 +260,7 @@ impl<'a> Parser<'a> {
             if self.check(&TokenType::RParen) { break; }
 
             // then push the parsed expr as an arg
-            args.push(self.parse_expr()?);
+            args.push(self.parse_bin_expr(0)?);
         }
 
         // return args vec as ok
@@ -199,7 +270,6 @@ impl<'a> Parser<'a> {
     fn parse_number(&mut self) -> Result<Expr, String> {
         let num = self.current_lex().unwrap().clone();
         self.advance();
-
         Ok(Expr::Number(num.parse().unwrap()))
     }
 

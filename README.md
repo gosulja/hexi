@@ -1,6 +1,9 @@
 # hexc
 The Hex language compiler & interpreter.
 
+# Usage
+Check any example in `/examples` and run with `hexc /examples/math/basic.hx`
+
 # Changes and Features
 - `date: 22/06/2025`
 * Native function such as `print("hey");`

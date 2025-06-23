@@ -1,3 +1,5 @@
+use crate::lexer::TokenType;
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Identifier(String),
@@ -5,7 +7,9 @@ pub enum Expr {
     String(String),
     Call(Call),
     VarDecl(VarDecl),
-    Assignment(Assignment)
+    Assignment(Assignment),
+    BinaryOp(BinaryOp),
+    UnaryOp(UnaryOp),
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +29,25 @@ pub struct VarDecl {
 pub struct Assignment {
     pub name: String,
     pub assignee: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryOp {
+    pub operand: Box<Expr>,
+    pub op: TokenType, // negate, or other shit idk
+}
+
+#[derive(Debug, Clone)]
+pub struct BinaryOp {
+    pub left: Box<Expr>,
+    pub right: Box<Expr>,
+    pub op: TokenType,
+}
+
+impl UnaryOp {
+    pub fn new(operand: Expr, op: TokenType) -> Self {
+        UnaryOp { operand: Box::new(operand), op }
+    }
 }
 
 impl Call {
@@ -54,5 +77,11 @@ impl VarDecl {
 impl Assignment {
     pub fn new(name: String, assignee: Expr) -> Self {
         Assignment { name, assignee: Box::new(assignee) }
+    }
+}
+
+impl BinaryOp {
+    pub fn new(left: Expr, right: Expr, op: TokenType) -> Self {
+        BinaryOp { left: Box::new(left), right: Box::new(right), op }
     }
 }
