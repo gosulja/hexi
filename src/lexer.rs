@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -11,6 +11,8 @@ pub enum TokenType {
     Equals,
     Semi,
     Val,        // variable declaration
+    DblColon,   // ::
+    Colon,
     Eof,
 }
 
@@ -70,6 +72,14 @@ impl<'a> Lexer<'a> {
         } else if c == '=' {
             self.advance();
             Some(make_token(TokenType::Equals, "=".to_string()))
+        } else if c == ':' {
+            self.advance();
+            if self.source.chars().nth(self.pos) == Some(':') {
+                self.advance();
+                Some(make_token(TokenType::DblColon, "::".to_string()))
+            } else {
+                Some(make_token(TokenType::Colon, ":".to_string()))
+            }
         } else {
             self.advance();
             self.next()

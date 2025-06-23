@@ -8,3 +8,19 @@ The Hex language compiler & interpreter.
 * REPL
 * Fixed identifier parser.
 * Created HashMap for keywords such as `val`
+
+- `date: 23/06/2025`
+* Added `stdlib` with modules.
+* Modules consist of: `io`, `math` and `string`
+* Cleaned up syntax, semi colons are no longer needed.
+* Improved parsing.
+* Added `::` operator which allows access to module consts or functions.
+## example
+```
+val name = io::input("name>> ")
+io::print(name)
+```
+```
+name>> blinx
+blinx
+```

@@ -1,6 +1,5 @@
-use crate::ast::VarDecl;
+use crate::ast::{Assignment, VarDecl, Expr, Call};
 use crate::lexer::{Lexer, Token, TokenType};
-use crate::ast::{Expr, Call};
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
@@ -44,6 +43,11 @@ impl<'a> Parser<'a> {
 
         while !self.check(&TokenType::Eof) {
             exprs.push(self.parse_expr()?);
+
+            // optional semis
+            if self.check(&TokenType::Semi) {
+                self.advance();
+            }
         }
 
         Ok(exprs)
@@ -76,13 +80,34 @@ impl<'a> Parser<'a> {
         // advance to the next token
         self.advance();
 
+        // check if we encounter a double colon '::' for module access, do this first
+        if self.check(&TokenType::DblColon) {
+            self.consume(TokenType::DblColon)?;
+
+            // ident after ::
+            let fn_name = self.consume(TokenType::Ident)?.lexeme;
+
+            // function call?
+            if self.check(&TokenType::LParen) {
+                return self.parse_mod_call(name, fn_name)
+            } else {
+                // no module call but a reference to const perhaps?
+                // math::PI for example
+                return Ok(Expr::Identifier(format!("{}::{}", name, fn_name)))
+            }
+        }
+
         // if the next token is a '(' then treat it as a function call
         if self.check(&TokenType::LParen) {
             // pass the name of the function
             self.parse_call(name)
-        // // if the next token is a '=' then treat it as a variable declaration
-        // } else if self.check(&TokenType::Equals) {
-        //     self.parse_var_decl(name)
+            // // if the next token is a '=' then treat it as a variable declaration
+            // } else if self.check(&TokenType::Equals) {
+            //     self.parse_var_decl(name)
+
+        // we are now expecting this: `ident = ...` , assignment
+        } else if self.check(&TokenType::Equals) {
+            self.parse_assignment(name)
         } else {
             Ok(Expr::Identifier(name))
         }
@@ -110,9 +135,28 @@ impl<'a> Parser<'a> {
         let args = if self.check(&TokenType::RParen) { Vec::new() } else { self.parse_args()? };
 
         self.consume(TokenType::RParen)?;
-        self.consume(TokenType::Semi)?;
+        // self.consume(TokenType::Semi)?;
 
         Ok(Expr::Call(Call::new( name, args )))
+    }
+
+    fn parse_mod_call(&mut self, module: String, name: String) -> Result<Expr, String> {
+        self.consume(TokenType::LParen)?;
+        let args = if self.check(&TokenType::RParen) { Vec::new() } else { self.parse_args()? };
+        self.consume(TokenType::RParen)?;
+        // self.consume(TokenType::Semi)?;
+
+        Ok(Expr::Call(Call::new_from_module(module, name, args)))
+    }
+
+    fn parse_assignment(&mut self, name: String) -> Result<Expr, String> {
+        self.consume(TokenType::Equals)?;
+
+        let assignee = self.parse_expr()?;
+
+        // self.consume(TokenType::Semi)?;
+
+        Ok(Expr::Assignment(Assignment::new(name, assignee)))
     }
 
     fn parse_var_decl(&mut self) -> Result<Expr, String> {
@@ -124,7 +168,7 @@ impl<'a> Parser<'a> {
 
         let value = self.parse_expr()?;
 
-        self.consume(TokenType::Semi)?;
+        // self.consume(TokenType::Semi)?;
 
         Ok(Expr::VarDecl(VarDecl::new(name, value)))
     }
