@@ -1,4 +1,5 @@
 use std::collections::{HashMap};
+use std::ptr::null;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -9,6 +10,11 @@ pub enum TokenType {
     RParen,
     Comma,
     DblEquals,  // ==
+    Lt,         // <
+    Gt,         // >
+    Gte,        // >=
+    Lte,        // <=
+    Neq,        // !=
     Equals,
     Semi,
     Val,        // variable declaration
@@ -124,6 +130,30 @@ impl<'a> Lexer<'a> {
                 Some(make_token(TokenType::DblEquals, "==".to_string()))
             } else {
                 Some(make_token(TokenType::Equals, "=".to_string()))
+            }
+        } else if c == '<' {
+            self.advance();
+            if self.source.chars().nth(self.pos) == Some('=') {
+                self.advance();
+                Some(make_token(TokenType::Lte, "<=".to_string()))
+            } else {
+                Some(make_token(TokenType::Lt, "<".to_string()))
+            }
+        } else if c == '>' {
+            self.advance();
+            if self.source.chars().nth(self.pos) == Some('=') {
+                self.advance();
+                Some(make_token(TokenType::Gte, ">=".to_string()))
+            } else {
+                Some(make_token(TokenType::Gt, ">".to_string()))
+            }
+        } else if c == '!' {
+            self.advance();
+            if self.source.chars().nth(self.pos) == Some('=') {
+                self.advance();
+                Some(make_token(TokenType::Neq, "!=".to_string()))
+            } else {
+                self.next()
             }
         // } else if c == '=' {
         //     self.advance();

@@ -12,6 +12,17 @@ fn len_nfn(args: &[Value]) -> Result<Value, String> {
     }
 }
 
+fn to_number_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!("too many arguments or too little for function string::to_number, got {}, want 1", args[0]));
+    }
+
+    match &args[0] {
+        Value::String(s) => Ok(Value::Number(s.parse::<f64>().unwrap())),
+        _ => Err(format!("not a string in string::to_number, got {}", args[0])),
+    }
+}
+
 fn upper_nfn(args: &[Value]) -> Result<Value, String> {
     if args.len() != 1 {
         return Err(format!("too many arguments or too little for function string::len, got {}, want 1", args.len()))
@@ -136,5 +147,6 @@ pub const STRING_MOD: Module = Module {
         ("contains", contains_nfn),
         ("replace", replace_nfn),
         ("substring", sub_nfn),
+        ("to_number", to_number_nfn)
     ],
 };

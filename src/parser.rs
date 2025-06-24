@@ -37,8 +37,12 @@ impl<'a> Parser<'a> {
     // we can to have operations such as adding and subbing lower precedence than to mul and div, and mod.
     fn precedence(&self, token_type: TokenType) -> u8 {
         match token_type {
-            TokenType::DblEquals => 1,      // any other relational ops
+            TokenType::DblEquals | TokenType::Lt |
+            TokenType::Gt | TokenType::Lte |
+            TokenType::Gte | TokenType::Neq => 1,
+
             TokenType::Add | TokenType::Sub => 2,
+
             TokenType::Mul | TokenType::Div | TokenType::Mod => 3,
             _ => 0,
         }
@@ -48,7 +52,9 @@ impl<'a> Parser<'a> {
     fn is_binop(&self, token_type: TokenType) -> bool {
         matches!(token_type, TokenType::Add | TokenType::Sub |
             TokenType::Mul | TokenType::Div |
-            TokenType::Mod | TokenType::DblEquals)
+            TokenType::Mod | TokenType::DblEquals | TokenType::Lt |
+            TokenType::Gt | TokenType::Lte |
+            TokenType::Gte | TokenType::Neq)
     }
 
     fn current_lex(&self) -> Option<&String> {
@@ -148,7 +154,15 @@ impl<'a> Parser<'a> {
         let block = self.parse_block()?;
         let else_block = if self.check(&TokenType::Else) {
             self.consume(TokenType::Else)?;
-            Some(self.parse_block()?)
+            // Some(self.parse_block()?)
+            // to add support for else if
+            // check if the next token is an if token,
+            // if it is then recursively parse it
+            if self.check(&TokenType::If) {
+                Some(Block::new(vec![self.parse_if()?]))
+            } else {
+                Some(self.parse_block()?)
+            }
         } else {
             None
         };

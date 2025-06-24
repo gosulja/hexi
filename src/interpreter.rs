@@ -1,10 +1,10 @@
+use std::cmp::{PartialOrd};
 use crate::ast::{Expr, Call, VarDecl, Assignment, BinaryOp, UnaryOp, If, Block};
 use crate::stdlib::{REGISTRY_STD};
 use std::collections::HashMap;
-use std::fmt::format;
 use crate::lexer::TokenType;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
     Number(f64),
     String(String),
@@ -149,6 +149,26 @@ impl Interpreter {
                 Ok(Value::Bool(left == right))
             },
 
+            TokenType::Lt => {
+                Ok(Value::Bool(left < right))
+            },
+
+            TokenType::Gt => {
+                Ok(Value::Bool(left > right))
+            },
+
+            TokenType::Lte => {
+                Ok(Value::Bool(left <= right))
+            },
+
+            TokenType::Gte => {
+                Ok(Value::Bool(left >= right))
+            },
+
+            TokenType::Neq => {
+                Ok(Value::Bool(left != right))
+            },
+
             TokenType::Add | TokenType::Sub | TokenType::Mul | TokenType::Div | TokenType::Mod => {
                 match (left, right) {
                     (Value::Number(l), Value::Number(r)) => {
@@ -223,9 +243,9 @@ impl Value {
         }
     }
 
-    pub fn is_bool(&self) -> bool {
-        matches!(self, Value::Bool(_))
-    }
+    // pub fn is_bool(&self) -> bool {
+    //     matches!(self, Value::Bool(_))
+    // }
 
     pub fn as_bool_ref(&self) -> Option<bool> {
         match self {
