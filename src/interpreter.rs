@@ -1,15 +1,15 @@
-use std::cmp::{PartialOrd};
-use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, If, IndexAccess, MethodCall, UnaryOp, VarDecl};
-use crate::stdlib::{REGISTRY_STD};
-use std::collections::HashMap;
+use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, FieldAccess, If, IndexAccess, MethodCall, Object, UnaryOp, VarDecl};
+use crate::stdlib::{REGISTRY_OPTIONAL, REGISTRY_STD};
+use std::collections::{HashMap, HashSet};
 use crate::lexer::TokenType;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
     String(String),
     Bool(bool),
     Array(Vec<Value>),
+    Object(HashMap<String, Value>),
     Nil,
 }
 
@@ -103,6 +103,10 @@ impl Method for Value {
                 }
             },
 
+            Value::Object(_) => {
+                Err(format!("unknown method '{}' for object.", method))
+            },
+
             _ => Err(format!("cannot call method '{}' on {:?}", method, self.type_name())),
         }
     }
@@ -131,6 +135,16 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, "]")
             },
+            Value::Object(obj) => {
+                write!(f, "{{")?;
+                let mut first = true;
+                for (key, value) in obj {
+                    if !first { write!(f, ", ")?; }
+                    write!(f, "{}: {}", key, value)?;
+                    first = false;
+                }
+                write!(f, "}}")
+            },
         }
     }
 }
@@ -140,6 +154,7 @@ type Native = fn(&[Value]) -> Result<Value, String>;
 pub struct Interpreter {
     natives: HashMap<String, Native>,
     vars: HashMap<String, Value>,
+    loaded_modules: HashSet<String>,
 }
 
 impl Interpreter {
@@ -147,6 +162,7 @@ impl Interpreter {
         let mut i = Interpreter {
             natives: HashMap::new(),
             vars: HashMap::new(),
+            loaded_modules: HashSet::new(),
         };
 
         i.load_std();
@@ -175,13 +191,21 @@ impl Interpreter {
         }
     }
 
-    pub fn list_natives(&self) {
-        println!("Available native functions:");
-        let mut names: Vec<_> = self.natives.keys().collect();
-        names.sort();
+    fn load_module(&mut self, mod_name: &str) -> Result<Value, String> {
+        if self.loaded_modules.contains(mod_name) {
+            return Ok(Value::Nil);
+        }
 
-        for name in names {
-            println!("  {}", name);
+        if let Some(module) = REGISTRY_OPTIONAL.iter().find(|m| m.name == mod_name) {
+            for (name, fptr) in module.funcs {
+                let realname = format!("{}_{}", module.name, name);
+                self.natives.insert(realname.clone(), *fptr);
+            }
+
+            self.loaded_modules.insert(mod_name.to_string());
+            Ok(Value::Nil)
+        } else {
+            Err(format!("module '{}' not found", mod_name))
         }
     }
 
@@ -200,6 +224,29 @@ impl Interpreter {
             Expr::UnaryOp(u) => self.exec_unary_op(u),
             Expr::If(i) => self.exec_if(i),
             Expr::Block(b) => self.exec_block(b),
+            Expr::Include(i) => self.load_module(&i.module),
+            Expr::Object(o) => self.exec_obj(o),
+            Expr::FieldAccess(fa) => self.exec_fa(fa),
+        }
+    }
+
+    fn exec_obj(&mut self, o: &Object) -> Result<Value, String> {
+        let mut efields = HashMap::new();
+        for (key, val) in &o.fields {
+            let v = self.evaluate(val)?;
+            efields.insert(key.clone(), v);
+        }
+
+        Ok(Value::Object(efields))
+    }
+
+    fn exec_fa(&mut self, fa: &FieldAccess) -> Result<Value, String> {
+        let ovalue = self.evaluate(&fa.object)?;
+        match ovalue {
+            Value::Object(map) => {
+                map.get(&fa.field).cloned().ok_or_else(|| format!("undefined field '{}'", fa.field))
+            },
+            _ => Err(format!("cannot access field '{}' on non object", fa.field))
         }
     }
 
@@ -422,6 +469,18 @@ impl Interpreter {
     }
 }
 
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => a.partial_cmp(b),
+            (Value::String(a), Value::String(b)) => a.partial_cmp(b),
+            (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
+            (Value::Object(_), Value::Object(_)) => None,
+            _ => None,
+        }
+    }
+}
+
 // helper implementations
 impl Value {
     pub fn type_name(&self) -> &'static str {
@@ -430,8 +489,21 @@ impl Value {
             Value::String(_) => "string",
             Value::Bool(_) => "bool",
             Value::Array(_) => "array",
+            Value::Object(_) => "struct",
             Value::Nil => "nil",
         }
+    }
+
+    pub fn new_object() -> Value {
+        Value::Object(HashMap::new())
+    }
+
+    pub fn from_pairs(pairs: Vec<(String, Value)>) -> Value {
+        let mut obj = HashMap::new();
+        for (key, value) in pairs {
+            obj.insert(key, value);
+        }
+        Value::Object(obj)
     }
 
     pub fn as_string(self) -> Result<String, String> {

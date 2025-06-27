@@ -8,6 +8,7 @@ pub enum TokenType {
     LParen,
     RParen,
     Comma,
+    Include,
     DblEquals, // ==
     Lt,        // <
     Gt,        // >
@@ -57,6 +58,7 @@ impl<'a> Lexer<'a> {
         keywords.insert("val", TokenType::Val);
         keywords.insert("if", TokenType::If);
         keywords.insert("else", TokenType::Else);
+        keywords.insert("include", TokenType::Include);
 
         Lexer {
             source,
@@ -95,7 +97,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn peek(&self) -> Option<char> {
+    pub fn peek(&self) -> Option<char> {
         self.source.chars().nth(self.pos + 1)
     }
 

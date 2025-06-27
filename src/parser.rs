@@ -1,4 +1,6 @@
-use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, If, IndexAccess, MethodCall, UnaryOp, VarDecl};
+use std::collections::HashMap;
+use std::ptr::fn_addr_eq;
+use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, If, IndexAccess, MethodCall, UnaryOp, VarDecl, Include, Object, FieldAccess};
 use crate::lexer::{Lexer, Token, TokenType};
 
 pub struct Parser<'a> {
@@ -118,6 +120,7 @@ impl<'a> Parser<'a> {
     fn parse_prim(&mut self) -> Result<Expr, String> {
         match &self.current {
             Some(t) => match t.token_type {
+                TokenType::Include => self.parse_include(),
                 TokenType::Sub => self.parse_unary(),
                 TokenType::Val => self.parse_var_decl(),
                 TokenType::Ident => self.parse_identifier(),
@@ -131,6 +134,58 @@ impl<'a> Parser<'a> {
             }
             None => Err("unexpected eof".to_string())
         }
+    }
+
+    fn parse_obj(&mut self) -> Result<Expr, String> {
+        println!("{}", format!("{:?}", self.current));
+        self.consume(TokenType::LBrace)?;
+        println!("{}", format!("{:?}", self.current));
+
+        let mut fields = HashMap::new();
+
+        // empty
+        if self.check(&TokenType::RBrace) {
+            self.consume(TokenType::RBrace)?;
+            return Ok(Expr::Object(Object::new(fields)));
+        }
+
+        println!("{}", format!("{:?}", self.current));
+
+        loop {
+            // parse "key = value,"
+            let key = self.consume(TokenType::Ident)?.lexeme;
+            self.consume(TokenType::Equals)?;
+            let val = self.parse_expr()?;
+            fields.insert(key, val);
+
+            if self.check(&TokenType::RBrace) {
+                self.consume(TokenType::RBrace)?;
+                break;
+            }
+
+            self.consume(TokenType::Comma)?;
+            if self.check(&TokenType::RBrace) {
+                self.consume(TokenType::RBrace)?;
+                break;
+            }
+        }
+
+        Ok(Expr::Object(Object::new(fields)))
+    }
+
+    fn parse_include(&mut self) -> Result<Expr, String> {
+        self.consume(TokenType::Include)?;  // consume 'include' keyword
+
+        // expect identifier
+        let module_name = if self.check(&TokenType::Ident) {
+            let name = self.current_lex().unwrap().clone();
+            self.advance();
+            name
+        } else {
+            return Err("expected identifier after 'include'".to_string());
+        };
+
+        Ok(Expr::Include(Include::new(module_name)))
     }
 
     // postfix => some_array[0] or some_array.empty()
@@ -162,7 +217,7 @@ impl<'a> Parser<'a> {
                             e = Expr::MethodCall(MethodCall::new(e, meth, args));
                         } else {
                             // for shit like, person.name
-                            return Err("field access not implemented".to_string());
+                            e = Expr::FieldAccess(FieldAccess::new(e, meth))
                         }
                     },
                     _ => break,

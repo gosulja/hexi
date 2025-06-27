@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+use std::hash::Hash;
 use crate::lexer::TokenType;
+use crate::stdlib::Module;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -15,11 +18,19 @@ pub enum Expr {
     Array(Array),
     IndexAccess(IndexAccess),
     MethodCall(MethodCall),
+    Include(Include),
+    Object(Object),
+    FieldAccess(FieldAccess),
 }
 
 #[derive(Debug, Clone)]
 pub struct Block {
     pub exprs: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Include {
+    pub module: String,
 }
 
 #[derive(Debug, Clone)]
@@ -79,9 +90,42 @@ pub struct MethodCall {
     pub args: Vec<Expr>,
 }
 
+
+#[derive(Debug, Clone)]
+pub struct Object {
+    pub fields: HashMap<String, Expr>,
+}
+
+impl Object {
+    pub fn new(fields: HashMap<String, Expr>) -> Self {
+        Object { fields }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldAccess {
+    pub object: Box<Expr>,
+    pub field: String,
+}
+
+impl FieldAccess {
+    pub fn new(object: Expr, field: String) -> Self {
+        FieldAccess {
+            object: Box::new(object),
+            field,
+        }
+    }
+}
+
 impl Block {
     pub fn new(exprs: Vec<Expr>) -> Block {
         Block { exprs }
+    }
+}
+
+impl Include {
+    pub fn new(module: String) -> Include {
+        Include { module }
     }
 }
 
