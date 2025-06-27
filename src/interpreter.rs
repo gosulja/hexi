@@ -13,6 +13,109 @@ pub enum Value {
     Nil,
 }
 
+pub trait Method {
+    fn call_method(&mut self, method: &str, args: &[Value]) -> Result<Value, String>;
+    fn got_method(&self, method: &str) -> bool;
+}
+
+impl Method for Value {
+    fn call_method(&mut self, method: &str, args: &[Value]) -> Result<Value, String> {
+        match self {
+            Value::Array(arr) => {
+                match method {
+                    "push" => {
+                        if args.len() != 1 {
+                            return Err(format!("push method on array expects 1 argument, got {}", args.len()));
+                        }
+
+                        arr.push(args[0].clone());
+                        Ok(Value::Nil)
+                    },
+
+                    "pop" => {
+                        if args.len() != 0 {
+                            return Err(format!("pop method on array expects no argument, got {}", args.len()));
+                        }
+
+                        Ok(arr.pop().unwrap_or(Value::Nil))
+                    },
+
+                    "size" => {
+                        if args.len() != 0 {
+                            return Err(format!("size method on array expects no argument, got {}", args.len()));
+                        }
+
+                        Ok(Value::Number(arr.len() as f64))
+                    },
+
+                    "get" => {
+                        if args.len() != 1 {
+                            return Err(format!("get method on array expects 1 argument, got {}", args.len()));
+                        }
+
+                        if let Value::Number(i) = &args[0] {
+                            let idx = *i as usize;
+
+                            if idx < arr.len() {
+                                Ok(arr[idx].clone())
+                            } else {
+                                Err(format!("index {} is out of bounds!", idx))
+                            }
+                        } else {
+                            Err("array index must be a number.".to_string())
+                        }
+                    },
+
+                    "insert" => {
+                        if args.len() != 2 {
+                            return Err(format!("insert method on array expects 2 arguments, got {}", args.len()));
+                        }
+
+                        if let Value::Number(i) = &args[0] {
+                            let idx = *i as usize;
+
+                            if idx <= arr.len() {
+                                arr.insert(idx, args[1].clone());
+                                Ok(Value::Nil)
+                            } else {
+                                Err(format!("index {} is out of bounds!", idx))
+                            }
+                        } else {
+                            Err("insert index must be a number.".to_string())
+                        }
+                    },
+
+                    _ => Err(format!("unknown method '{}' for array.", method))
+                }
+            },
+
+            Value::String(s) => {
+                match method {
+                    "len" => {
+                        if args.len() != 0 {
+                            return Err(format!("len method on string expects no arguments, got {}", args.len()));
+                        }
+
+                        Ok(Value::Number(s.len() as f64))
+                    },
+
+                    _ => Err(format!("unknown method '{}' for string.", method))
+                }
+            },
+
+            _ => Err(format!("cannot call method '{}' on {:?}", method, self.type_name())),
+        }
+    }
+
+    fn got_method(&self, method: &str) -> bool {
+        match self {
+            Value::Array(_) => matches!(method, "push" | "pop" | "size" | "get" | "insert"),
+            Value::String(_) => matches!(method, "len"),
+            _ => false
+        }
+    }
+}
+
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -148,34 +251,54 @@ impl Interpreter {
     }
 
     fn exec_method_call(&mut self, mc: &MethodCall) -> Result<Value, String> {
-        let obj = self.evaluate(&mc.object);
+        // let obj = self.evaluate(&mc.object);
+        // let mut args = Vec::new();
+        // for a in &mc.args { args.push(self.evaluate(a)?); }
+        //
+        // match obj {
+        //     Ok(Value::Array(mut arr)) => {
+        //         match mc.method.as_str() {
+        //             "push" => {
+        //                 if args.len() != 1 {
+        //                     return Err(format!("push() expects 1 argument, got {}", args.len()))
+        //                 }
+        //
+        //                 arr.push(args[0].clone());
+        //
+        //                 // method call on identifier? update variable
+        //                 // val nums = [1, 2, 3]
+        //                 // nums.push(4)
+        //                 if let Expr::Identifier(n) = &*mc.object {
+        //                     self.vars.insert(n.clone(), Value::Array(arr));
+        //                 }
+        //
+        //                 Ok(Value::Nil)
+        //             },
+        //             _ => Err(format!("unknown method '{}' for array", mc.method)),
+        //         }
+        //     },
+        //     _ => Err(format!("cannot call method '{}' on {:?}", mc.method, obj))
+        // }
+
         let mut args = Vec::new();
         for a in &mc.args { args.push(self.evaluate(a)?); }
 
-        match obj {
-            Ok(Value::Array(mut arr)) => {
-                match mc.method.as_str() {
-                    "push" => {
-                        if args.len() != 1 {
-                            return Err(format!("push() expects 1 argument, got {}", args.len()))
-                        }
-
-                        arr.push(args[0].clone());
-
-                        // method call on identifier? update variable
-                        // val nums = [1, 2, 3]
-                        // nums.push(4)
-                        if let Expr::Identifier(n) = &*mc.object {
-                            self.vars.insert(n.clone(), Value::Array(arr));
-                        }
-
-                        Ok(Value::Nil)
-                    },
-                    _ => Err(format!("unknown method '{}' for array", mc.method)),
-                }
-            },
-            _ => Err(format!("cannot call method '{}' on {:?}", mc.method, obj))
+        // calling method on an identifier?
+        // some_arr.size()
+        if let Expr::Identifier(id) = &*mc.object {
+            if let Some(mut val) = self.vars.get(id).cloned() {
+                let meth_result = val.call_method(&mc.method, &args)?;
+                self.vars.insert(id.clone(), val);  // we wanna update incase the method mutates the obj
+                return Ok(meth_result);
+            } else {
+                return Err(format!("undefined variable '{}'", id));
+            }
         }
+
+        // and then handle method calls on exprs
+        // val v = [ 1, 2, 3, 4 ].size()
+        let mut o = self.evaluate(&mc.object)?;
+        o.call_method(&mc.method, &args)
     }
 
     fn exec_unary_op(&mut self, u: &UnaryOp) -> Result<Value, String> {
@@ -301,6 +424,16 @@ impl Interpreter {
 
 // helper implementations
 impl Value {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+            Value::Bool(_) => "bool",
+            Value::Array(_) => "array",
+            Value::Nil => "nil",
+        }
+    }
+
     pub fn as_string(self) -> Result<String, String> {
         match self {
             Value::String(s) => Ok(s),

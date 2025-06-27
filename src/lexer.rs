@@ -51,7 +51,7 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str) -> Lexer {
+    pub fn new(source: &'a str) -> Self {
         let mut keywords = HashMap::new();
 
         keywords.insert("val", TokenType::Val);

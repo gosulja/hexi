@@ -11,7 +11,7 @@ mod ast;
 mod interpreter;
 mod stdlib;
 
-const HEX_BUILD: &str = "hexc 0.2.2";
+const HEX_BUILD: &str = "hexi 0.2.4";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -19,7 +19,7 @@ fn main() {
     if args.len() > 1 {
         let filename = &args[1];
         if !filename.ends_with(".hx") {
-            eprintln!("hexc error: file must have .hx extension");
+            eprintln!("[hexi::error] file must have .hx extension");
             std::process::exit(1);
         }
 
@@ -33,7 +33,7 @@ fn run_file(filename: &str) {
     let contents = match fs::read_to_string(filename) {
         Ok(content) => content,
         Err(e) => {
-            eprintln!("hexc error reading file '{}': {}", filename, e);
+            eprintln!("[hexi::error] reading file '{}': {}", filename, e);
             std::process::exit(1);
         }
     };
@@ -54,7 +54,7 @@ fn run_repl() {
         match io::stdin().read_line(&mut input) {
             Ok(_) => {},
             Err(e) => {
-                println!("error reading input: {}", e);
+                println!("[hexi::error] error reading input: {}", e);
                 continue;
             }
         }
@@ -66,21 +66,10 @@ fn run_repl() {
             break;
         }
 
-        if input == "natives" {
-            interpreter.list_natives();
-            continue;
-        }
-
         if input.is_empty() {
             continue;
         }
-
-        if input == "vars" || input == "variables" {
-            println!("== variables");
-            interpreter.dbg_print_variables();
-            continue;
-        }
-
+        
         execute(&mut interpreter, input);
     }
 }
