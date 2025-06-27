@@ -1,6 +1,6 @@
 [package]
 name = "hexc"
-version = "0.1.0"
-edition = "2024"
+version = "0.2.2"
+edition = "2025"
 
 [dependencies]
