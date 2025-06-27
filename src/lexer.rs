@@ -1,5 +1,4 @@
-use std::collections::{HashMap};
-use std::ptr::null;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -9,18 +8,21 @@ pub enum TokenType {
     LParen,
     RParen,
     Comma,
-    DblEquals,  // ==
-    Lt,         // <
-    Gt,         // >
-    Gte,        // >=
-    Lte,        // <=
-    Neq,        // !=
+    DblEquals, // ==
+    Lt,        // <
+    Gt,        // >
+    Gte,       // >=
+    Lte,       // <=
+    Neq,       // !=
     Equals,
     Semi,
-    Val,        // variable declaration
-    DblColon,   // ::
-    LBrace,     // {
-    RBrace,     // }
+    Val,      // variable declaration
+    DblColon, // ::
+    LBrace,   // {
+    RBrace,   // }
+    LBracket, // [
+    RBracket, // ]
+    Dot,
     Colon,
     Add,
     Sub,
@@ -56,7 +58,41 @@ impl<'a> Lexer<'a> {
         keywords.insert("if", TokenType::If);
         keywords.insert("else", TokenType::Else);
 
-        Lexer { source, pos: 0, keywords }
+        Lexer {
+            source,
+            pos: 0,
+            keywords,
+        }
+    }
+
+    fn skip_ws(&mut self) {
+        while let Some(c) = self.current() {
+            if c.is_whitespace() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    }
+    
+    // single token, =
+    fn stoken(&mut self, token_type: TokenType) -> Option<Token> {
+        let c = self.current()?.to_string();
+        self.advance();
+        Some(make_token(token_type, c))
+    }
+    
+    // double tokens, so like ==
+    fn dtoken(&mut self, second_char: char, double_type: TokenType, single_type: TokenType) -> Option<Token> {
+        let first_char = self.current()?;
+        self.advance();
+        
+        if self.current() == Some(second_char) {
+            self.advance();
+            Some(make_token(double_type, format!("{}{}", first_char, second_char)))
+        } else {
+            Some(make_token(single_type, first_char.to_string()))
+        }
     }
 
     fn peek(&self) -> Option<char> {
@@ -64,116 +100,51 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next(self: &mut Lexer<'a>) -> Option<Token> {
-        while let Some(c) = self.current() {
-            if c.is_whitespace() {
-                self.advance();
-            } else {
-                break
-            }
-        }
+        self.skip_ws();
 
         let c = self.current()?;
-        if c.is_alphabetic() || c == '_' {
-            Some(self.process_identifier())
-        } else if c.is_numeric() {
-            Some(self.process_number())
-        } else if c == '"' || c == '\'' {
-            Some(self.process_string())
-        } else if c == ';' {
-            self.advance();
-            Some(make_token(TokenType::Semi, ";".to_string()))
-        } else if c == '(' {
-            self.advance();
-            Some(make_token(TokenType::LParen, "(".to_string()))
-        } else if c == ')' {
-            self.advance();
-            Some(make_token(TokenType::RParen, ")".to_string()))
-        } else if c == '{' {
-            self.advance();
-            Some(make_token(TokenType::LBrace, "{".to_string()))
-        } else if c == '}' {
-            self.advance();
-            Some(make_token(TokenType::RBrace, "}".to_string()))
-        } else if c == ',' {
-            self.advance();
-            Some(make_token(TokenType::Comma, ",".to_string()))
-        // } else if c == '=' {
-        //     self.advance();
-        //     Some(make_token(TokenType::Equals, "=".to_string()))
-        } else if c == '+' {
-            self.advance();
-            Some(make_token(TokenType::Add, "+".to_string()))
-        } else if c == '-' {
-            self.advance();
-            Some(make_token(TokenType::Sub, "-".to_string()))
-        } else if c == '*' {
-            self.advance();
-            Some(make_token(TokenType::Mul, "*".to_string()))
-        } else if c == '/' {
-            self.advance();
-            Some(make_token(TokenType::Div, "/".to_string()))
-        } else if c == '%' {
-            self.advance();
-            Some(make_token(TokenType::Mod, "%".to_string()))
-        } else if c == ':' {
-            self.advance();
-            if self.source.chars().nth(self.pos) == Some(':') {
-                self.advance();
-                Some(make_token(TokenType::DblColon, "::".to_string()))
-            } else {
-                Some(make_token(TokenType::Colon, ":".to_string()))
+
+        match c {
+            c if c.is_alphabetic() || c == '_' => Some(self.process_identifier()),
+            c if c.is_numeric() => Some(self.process_number()),
+            '"' | '\'' => Some(self.process_string()),
+
+            ';' => self.stoken(TokenType::Semi),
+            '(' => self.stoken(TokenType::LParen),
+            ')' => self.stoken(TokenType::RParen),
+            '{' => self.stoken(TokenType::LBrace),
+            '}' => self.stoken(TokenType::RBrace),
+            '[' => self.stoken(TokenType::LBracket),
+            ']' => self.stoken(TokenType::RBracket),
+            '.' => self.stoken(TokenType::Dot),
+            ',' => self.stoken(TokenType::Comma),
+            '+' => self.stoken(TokenType::Add),
+            '-' => self.stoken(TokenType::Sub),
+            '*' => self.stoken(TokenType::Mul),
+            '/' => self.stoken(TokenType::Div),
+            '%' => self.stoken(TokenType::Mod),
+
+            ':' => self.dtoken(':', TokenType::DblColon, TokenType::Colon),
+            '=' => self.dtoken('=', TokenType::DblEquals, TokenType::Equals),
+            '<' => self.dtoken('=', TokenType::Lte, TokenType::Lt),
+            '>' => self.dtoken('=', TokenType::Gte, TokenType::Gt),
+            // for double tokens which have two different chars in them, but there is no character ! by it
+            // self, so make sure to skip the illegal character if it's by itself
+            '!' => {
+                if self.peek() == Some('=') {
+                    self.advance();
+                    self.advance();
+                    Some(make_token(TokenType::Neq, "!=".to_string()))
+                } else {
+                    self.advance();
+                    self.next()
+                }
             }
-        } else if c == '=' {
-            self.advance();
-            if self.source.chars().nth(self.pos) == Some('=') {
+
+            _ => {
                 self.advance();
-                Some(make_token(TokenType::DblEquals, "==".to_string()))
-            } else {
-                Some(make_token(TokenType::Equals, "=".to_string()))
-            }
-        } else if c == '<' {
-            self.advance();
-            if self.source.chars().nth(self.pos) == Some('=') {
-                self.advance();
-                Some(make_token(TokenType::Lte, "<=".to_string()))
-            } else {
-                Some(make_token(TokenType::Lt, "<".to_string()))
-            }
-        } else if c == '>' {
-            self.advance();
-            if self.source.chars().nth(self.pos) == Some('=') {
-                self.advance();
-                Some(make_token(TokenType::Gte, ">=".to_string()))
-            } else {
-                Some(make_token(TokenType::Gt, ">".to_string()))
-            }
-        } else if c == '!' {
-            self.advance();
-            if self.source.chars().nth(self.pos) == Some('=') {
-                self.advance();
-                Some(make_token(TokenType::Neq, "!=".to_string()))
-            } else {
                 self.next()
             }
-        // } else if c == '=' {
-        //     self.advance();
-        //     if self.peek() == Some('=') {
-        //         self.advance();
-        //         Some(make_token(TokenType::DblEquals, "==".to_string()))
-        //     } else {
-        //         Some(make_token(TokenType::Equals, "=".to_string()))
-        //     }
-        // } else if c == ':' {
-        //     self.advance();
-        //     if self.peek() == Some(':') {
-        //         self.advance();
-        //         Some(make_token(TokenType::DblColon, "::".to_string()))
-        //     } else {
-        //         Some(make_token(TokenType::Colon, ":".to_string()))
-        //     }
-        } else {
-            self.advance();
-            self.next()
         }
     }
 
@@ -210,10 +181,10 @@ impl<'a> Lexer<'a> {
 
         make_token(TokenType::String, strval)
     }
-    
+
     fn process_number(&mut self) -> Token {
         let start = self.pos;
-        let mut float = false;  // flag for processing floating point numbers
+        let mut float = false; // flag for processing floating point numbers
 
         // while let Some(c) = self.current() {
         //     if c.is_numeric() {
@@ -236,7 +207,7 @@ impl<'a> Lexer<'a> {
                 _ => break,
             }
         }
-        
+
         make_token(TokenType::Number, self.source[start..self.pos].to_string())
     }
 

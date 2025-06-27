@@ -12,6 +12,9 @@ pub enum Expr {
     UnaryOp(UnaryOp),
     Block(Block),
     If(If),
+    Array(Array),
+    IndexAccess(IndexAccess),
+    MethodCall(MethodCall),
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +59,24 @@ pub struct BinaryOp {
     pub left: Box<Expr>,
     pub right: Box<Expr>,
     pub op: TokenType,
+}
+
+#[derive(Debug, Clone)]
+pub struct Array {
+    pub values: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexAccess {
+    pub object: Box<Expr>,
+    pub index: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MethodCall {
+    pub object: Box<Expr>,
+    pub method: String,
+    pub args: Vec<Expr>,
 }
 
 impl Block {
@@ -113,5 +134,30 @@ impl Assignment {
 impl BinaryOp {
     pub fn new(left: Expr, right: Expr, op: TokenType) -> Self {
         BinaryOp { left: Box::new(left), right: Box::new(right), op }
+    }
+}
+
+impl Array {
+    pub fn new(values: Vec<Expr>) -> Self {
+        Array { values }
+    }
+}
+
+impl IndexAccess {
+    pub fn new(object: Expr, index: Expr) -> Self {
+        IndexAccess {
+            object: Box::new(object),
+            index: Box::new(index),
+        }
+    }
+}
+
+impl MethodCall {
+    pub fn new(object: Expr, method: String, args: Vec<Expr>) -> Self {
+        MethodCall {
+            object: Box::new(object),
+            method,
+            args,
+        }
     }
 }

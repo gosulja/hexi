@@ -1,5 +1,5 @@
 use std::cmp::{PartialOrd};
-use crate::ast::{Expr, Call, VarDecl, Assignment, BinaryOp, UnaryOp, If, Block};
+use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, If, IndexAccess, MethodCall, UnaryOp, VarDecl};
 use crate::stdlib::{REGISTRY_STD};
 use std::collections::HashMap;
 use crate::lexer::TokenType;
@@ -9,6 +9,7 @@ pub enum Value {
     Number(f64),
     String(String),
     Bool(bool),
+    Array(Vec<Value>),
     Nil,
 }
 
@@ -19,6 +20,14 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Nil => write!(f, "nil"),
             Value::Bool(b) => write!(f, "{}", b),
+            Value::Array(arr) => {
+                write!(f, "[")?;
+                for (i, val) in arr.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", val)?;
+                }
+                write!(f, "]")
+            },
         }
     }
 }
@@ -79,6 +88,9 @@ impl Interpreter {
             Expr::String(s) => Ok(Value::String(s.to_string())),
             Expr::Identifier(name) => self.vars.get(name).cloned().ok_or_else(|| format!("undefined variable or reference '{}'", name)),
             Expr::Call(c) => self.exec_call(c),
+            Expr::Array(a) => self.exec_array(a),
+            Expr::IndexAccess(ia) => self.exec_idx_access(ia),
+            Expr::MethodCall(mc) => self.exec_method_call(mc),
             Expr::VarDecl(v) => self.exec_var_decl(v),
             Expr::Assignment(a) => self.exec_assignment(a),
             Expr::BinaryOp(b) => self.exec_binary_op(b),
@@ -111,6 +123,59 @@ impl Interpreter {
         }
 
         Ok(last)
+    }
+
+    fn exec_array(&mut self, a: &Array) -> Result<Value, String> {
+        let mut values = Vec::new();
+        for v in &a.values { values.push(self.evaluate(v)?); }
+        Ok(Value::Array(values))
+    }
+
+    fn exec_idx_access(&mut self, ia: &IndexAccess) -> Result<Value, String> {
+        let arr = self.evaluate(&ia.object)?;
+        let idx = self.evaluate(&ia.index)?;
+        match (arr, idx) {
+            (Value::Array(a), Value::Number(n)) => {
+                let i = n as usize;
+                if i < a.len() {
+                    Ok(a[i].clone())
+                } else {
+                    Err(format!("array index {} is out of bounds.", i))
+                }
+            }
+            (arr, _) => Err(format!("cannot index into {:?}",arr))
+        }
+    }
+
+    fn exec_method_call(&mut self, mc: &MethodCall) -> Result<Value, String> {
+        let obj = self.evaluate(&mc.object);
+        let mut args = Vec::new();
+        for a in &mc.args { args.push(self.evaluate(a)?); }
+
+        match obj {
+            Ok(Value::Array(mut arr)) => {
+                match mc.method.as_str() {
+                    "push" => {
+                        if args.len() != 1 {
+                            return Err(format!("push() expects 1 argument, got {}", args.len()))
+                        }
+
+                        arr.push(args[0].clone());
+
+                        // method call on identifier? update variable
+                        // val nums = [1, 2, 3]
+                        // nums.push(4)
+                        if let Expr::Identifier(n) = &*mc.object {
+                            self.vars.insert(n.clone(), Value::Array(arr));
+                        }
+
+                        Ok(Value::Nil)
+                    },
+                    _ => Err(format!("unknown method '{}' for array", mc.method)),
+                }
+            },
+            _ => Err(format!("cannot call method '{}' on {:?}", mc.method, obj))
+        }
     }
 
     fn exec_unary_op(&mut self, u: &UnaryOp) -> Result<Value, String> {

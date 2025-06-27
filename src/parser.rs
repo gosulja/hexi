@@ -1,4 +1,4 @@
-use crate::ast::{Assignment, VarDecl, Expr, Call, BinaryOp, UnaryOp, If, Block};
+use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, If, IndexAccess, MethodCall, UnaryOp, VarDecl};
 use crate::lexer::{Lexer, Token, TokenType};
 
 pub struct Parser<'a> {
@@ -92,7 +92,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_bin_expr(&mut self, precedence: u8) -> Result<Expr, String> {
-        let mut left = self.parse_prim()?;
+        let mut left = self.parse_postfix()?;
 
         while let Some(ref t) = self.current {
             if !self.is_binop(t.clone().token_type) {
@@ -124,6 +124,7 @@ impl<'a> Parser<'a> {
                 TokenType::String => self.parse_string(),
                 TokenType::Number => self.parse_number(),
                 TokenType::LParen => self.parse_grouped(),
+                TokenType::LBracket => self.parse_array(),
                 TokenType::LBrace => Ok(Expr::Block(self.parse_block()?)),
                 TokenType::If => self.parse_if(),
                 _ => Err(format!("unexpected token {:?}", t))
@@ -132,10 +133,51 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // postfix => some_array[0] or some_array.empty()
+    fn parse_postfix(&mut self) -> Result<Expr, String> {
+        let mut e = self.parse_prim()?;
+
+        loop {
+            match &self.current {
+                Some(t) => match t.token_type {
+                    TokenType::LBracket => {
+                        // some_array[idx]
+                        self.consume(TokenType::LBracket)?; // get past [
+                        let idx = self.parse_expr()?;
+                        self.consume(TokenType::RBracket)?; // get pas ]
+                        // at this post we've parsed [idx]
+                        // so set the current expr to this index access
+                        e = Expr::IndexAccess(IndexAccess::new(e, idx));
+                    },
+                    TokenType::Dot => {
+                        // some_obj.func(args...)
+                        self.consume(TokenType::Dot)?;  // get past .
+                        // now get method from obj
+                        let meth = self.consume(TokenType::Ident)?.lexeme;
+                        if self.check(&TokenType::LParen) { // we calling it?
+                            self.consume(TokenType::LParen)?;   // get past (
+                            // if we're not an empty () call parse_args, if we are empty, just create an empty vec
+                            let args = if self.check(&TokenType::RParen) { Vec::new() } else { self.parse_args()? };
+                            self.consume(TokenType::RParen)?;   // get past )
+                            e = Expr::MethodCall(MethodCall::new(e, meth, args));
+                        } else {
+                            // for shit like, person.name
+                            return Err("field access not implemented".to_string());
+                        }
+                    },
+                    _ => break,
+                },
+                None => break
+            }
+        }
+
+        Ok(e)
+    }
+
     fn parse_unary(&mut self) -> Result<Expr, String> {
         let op = self.current.clone().unwrap().token_type.clone();
         self.advance();
-        let operand = self.parse_prim()?;
+        let operand = self.parse_postfix()?;
         Ok(Expr::UnaryOp(UnaryOp::new(operand, op)))
     }
 
@@ -144,6 +186,36 @@ impl<'a> Parser<'a> {
         let expr = self.parse_bin_expr(0)?;
         self.consume(TokenType::RParen)?;
         Ok(expr)
+    }
+
+    fn parse_array(&mut self) -> Result<Expr, String> {
+        self.consume(TokenType::LBracket)?; // get passt [
+        let mut values = Vec::new(); // create a vec for the values within the array
+        // empty array? val some_array = []
+        if self.check(&TokenType::RBracket) {
+            self.consume(TokenType::RBracket)?;
+            return Ok(Expr::Array(Array::new(values)))
+        }
+
+        // push first
+        // val some_vec = [1, 2, 3, 4]
+        //                 ^
+        values.push(self.parse_expr()?);
+
+        // parse next value when we at a comma
+        while self.check(&TokenType::Comma) {
+            self.consume(TokenType::Comma)?;    // we at a comma? eat it.
+            // but lets also allow for a trailing comma
+            // val some = [1, 2, 3,]
+            //                    ^
+            if self.check(&TokenType::RBracket) { break; }
+
+            // and then parse the value
+            values.push(self.parse_expr()?);
+        }
+
+        self.consume(TokenType::RBracket)?; // end it of with ]
+        Ok(Expr::Array(Array::new(values)))
     }
 
     fn parse_if(&mut self) -> Result<Expr, String> {

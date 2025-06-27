@@ -135,6 +135,76 @@ fn sub_nfn(args: &[Value]) -> Result<Value, String> {
     }
 }
 
+fn format_nfn(args: &[Value]) -> Result<Value, String> {
+    if args.is_empty() {
+        return Err("string::format expects at least one argument".to_string());
+    }
+
+    let format_str = match &args[0] {
+        Value::String(s) => s,
+        _ => return Err(format!("string::format expects first argument to be a string, got {}", args[0])),
+    };
+
+    let mut result = String::new();
+    let mut chars = format_str.chars().peekable();
+    let mut arg_index = 1;
+
+    while let Some(ch) = chars.next() {
+        if ch == '{' {
+            if chars.peek() == Some(&'}') {
+                chars.next(); // eat '}'
+                
+                if arg_index >= args.len() {
+                    return Err("string::format: not enough arguments for format placeholders".to_string());
+                }
+
+                // convert 
+                let arg_str = match &args[arg_index] {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) => {
+                        // make numbers look pretty
+                        if n.fract() == 0.0 {
+                            format!("{}", *n as i64)
+                        } else {
+                            format!("{}", n)
+                        }
+                    },
+                    Value::Bool(b) => b.to_string(),
+                    Value::Array(arr) => {
+                        // [v1, v2, ...]
+                        let elements: Vec<String> = arr.iter().map(|v| match v {
+                            Value::String(s) => format!("\"{}\"", s),
+                            Value::Number(n) => {
+                                if n.fract() == 0.0 {
+                                    format!("{}", *n as i64)
+                                } else {
+                                    format!("{}", n)
+                                }
+                            },
+                            Value::Bool(b) => b.to_string(),
+                            _ => format!("{:?}", v),
+                        }).collect();
+                        format!("[{}]", elements.join(", "))
+                    },
+                    _ => format!("{:?}", args[arg_index]), 
+                };
+
+                result.push_str(&arg_str);
+                arg_index += 1;
+            } else {
+                result.push(ch);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    if arg_index < args.len() {
+        return Err("string::format: too many arguments for format placeholders".to_string());
+    }
+
+    Ok(Value::String(result))
+}
 pub const STRING_MOD: Module = Module {
     name: "string",
     funcs: &[
@@ -146,7 +216,8 @@ pub const STRING_MOD: Module = Module {
         ("ends_with", ends_with_nfn),
         ("contains", contains_nfn),
         ("replace", replace_nfn),
-        ("substring", sub_nfn),
-        ("to_number", to_number_nfn)
+        ("sub", sub_nfn),
+        ("parse", to_number_nfn),
+        ("fmt", format_nfn)
     ],
 };
