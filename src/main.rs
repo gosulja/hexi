@@ -11,7 +11,7 @@ mod ast;
 mod interpreter;
 mod stdlib;
 
-const HEX_BUILD: &str = "hexc 0.2.2 (2025-06-24)";
+const HEX_BUILD: &str = "hexc 0.2.2";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
