@@ -6,9 +6,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+  pull_request:  # Also build on PRs to test
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build:
@@ -35,51 +37,51 @@ jobs:
             asset_name: hexi-macos-aarch64
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: ${{ matrix.target }}
-        override: true
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
 
-    - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target ${{ matrix.target }}
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
 
-    - name: Get version from Cargo.toml
-      id: version
-      run: |
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          VERSION=$(powershell -Command "(Get-Content Cargo.toml | Select-String 'version = ').Line.Split('=')[1].Trim().Trim('\"')")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-        else
-          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-        fi
-      shell: bash
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            VERSION=$(powershell -Command "(Get-Content Cargo.toml | Select-String 'version = ').Line.Split('=')[1].Trim().Trim('\"')")
+            echo "VERSION=$VERSION" >> $GITHUB_ENV
+          else
+            VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+            echo "VERSION=$VERSION" >> $GITHUB_ENV
+          fi
+        shell: bash
 
-    - name: Create archive
-      run: |
-        mkdir -p dist
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/
-          cd dist && 7z a ${{ matrix.asset_name }}-${{ env.VERSION }}.zip ${{ matrix.artifact_name }}
-        else
-          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/
-          cd dist && tar -czf ${{ matrix.asset_name }}-${{ env.VERSION }}.tar.gz ${{ matrix.artifact_name }}
-        fi
-      shell: bash
+      - name: Create archive
+        run: |
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/
+            cd dist && 7z a ${{ matrix.asset_name }}-${{ env.VERSION }}.zip ${{ matrix.artifact_name }}
+          else
+            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/
+            cd dist && tar -czf ${{ matrix.asset_name }}-${{ env.VERSION }}.tar.gz ${{ matrix.artifact_name }}
+          fi
+        shell: bash
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.asset_name }}-${{ env.VERSION }}
-        path: dist/*
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-${{ env.VERSION }}
+          path: dist/*
 
   release:
     name: Create Release
@@ -88,16 +90,49 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: artifacts/**/*
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 🚀 New Release: ${{ github.ref_name }}
+            
+            Cross-platform binaries for Windows, Linux, and macOS.
+            
+            ### Download the right version for your system:
+            - **Windows**: `hexi-*-windows-x86_64.zip`
+            - **Linux**: `hexi-*-linux-x86_64.tar.gz`
+            - **macOS Intel**: `hexi-*-macos-x86_64.tar.gz`
+            - **macOS Apple Silicon**: `hexi-*-macos-aarch64.tar.gz`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Always upload artifacts, even without tags
+  upload-artifacts:
+    name: Upload Artifacts
+    needs: build
+    runs-on: ubuntu-latest
+    if: always() && needs.build.result == 'success'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display artifacts
+        run: |
+          echo "## 📦 Built Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "The following binaries were built successfully:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          find artifacts -name "*.zip" -o -name "*.tar.gz" | while read file; do
+            echo "- $(basename "$file")" >> $GITHUB_STEP_SUMMARY
+          done
