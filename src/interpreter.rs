@@ -99,6 +99,14 @@ impl Method for Value {
                         Ok(Value::Number(s.len() as f64))
                     },
 
+                    "test" => {
+                        if args.len() != 0 {
+                            return Err(format!("len method on string expects no arguments, got {}", args.len()));
+                        }
+
+                        Ok(Value::Number(s.len() as f64))
+                    },
+
                     _ => Err(format!("unknown method '{}' for string.", method))
                 }
             },
