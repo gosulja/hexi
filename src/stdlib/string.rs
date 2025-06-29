@@ -170,22 +170,22 @@ fn format_nfn(args: &[Value]) -> Result<Value, String> {
                         }
                     },
                     Value::Bool(b) => b.to_string(),
-                    Value::Array(arr) => {
-                        // [v1, v2, ...]
-                        let elements: Vec<String> = arr.iter().map(|v| match v {
-                            Value::String(s) => format!("\"{}\"", s),
-                            Value::Number(n) => {
-                                if n.fract() == 0.0 {
-                                    format!("{}", *n as i64)
-                                } else {
-                                    format!("{}", n)
-                                }
-                            },
-                            Value::Bool(b) => b.to_string(),
-                            _ => format!("{:?}", v),
-                        }).collect();
-                        format!("[{}]", elements.join(", "))
-                    },
+                    // Value::Array(arr) => {
+                    //     // [v1, v2, ...]
+                    //     let elements: Vec<String> = arr.iter().map(|v| match v {
+                    //         Value::String(s) => format!("\"{}\"", s),
+                    //         Value::Number(n) => {
+                    //             if n.fract() == 0.0 {
+                    //                 format!("{}", *n as i64)
+                    //             } else {
+                    //                 format!("{}", n)
+                    //             }
+                    //         },
+                    //         Value::Bool(b) => b.to_string(),
+                    //         _ => format!("{:?}", v),
+                    //     }).collect();
+                    //     format!("[{}]", elements.join(", "))
+                    // },
                     _ => format!("{:?}", args[arg_index]), 
                 };
 

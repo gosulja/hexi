@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-use std::fs;
-use crate::ast::Object;
-use crate::interpreter::Value;
+use crate::interpreter::{CKey, CValue, Value};
 use crate::stdlib::Module;
 use serde_json::{self, Value as JsonValue};
 
@@ -20,15 +17,23 @@ fn parse_nfn(args: &[Value]) -> Result<Value, String> {
     fn json_to_value(json: JsonValue) -> Result<Value, String> {
         match json {
             JsonValue::Object(m) => {
-                let mut hashmap = HashMap::new();
+                let mut hashmap = CValue::new();
                 for (key, value) in m {
-                    hashmap.insert(key.to_string(), json_to_value(value)?);
+                    let val = json_to_value(value)?;
+                    hashmap.insert(CKey::String(key), val);
                 }
-                Ok(Value::Object(hashmap))
+
+                Ok(Value::Collection(hashmap))
             }
             JsonValue::Array(a) => {
-                let v = a.into_iter().map(json_to_value).collect::<Result<Vec<Value>, String>>()?;
-                Ok(Value::Array(v))
+                let mut c = CValue::new();
+                for (i, json_val) in a.into_iter().enumerate() {
+                    let val = json_to_value(json_val)?;
+                    c.insert(CKey::Index(i), val);
+                }
+
+                c.size = c.entries.len();
+                Ok(Value::Collection(c))
             }
             JsonValue::String(s) => Ok(Value::String(s)),
             JsonValue::Number(n) => Ok(Value::Number(n.as_f64().ok_or("invalid number format")?)),

@@ -1,4 +1,4 @@
-use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, FieldAccess, If, IndexAccess, MethodCall, Object, UnaryOp, VarDecl};
+use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, FieldAccess, If, IndexAccess, MethodCall, Collection, UnaryOp, VarDecl, CEntry};
 use crate::stdlib::{REGISTRY_OPTIONAL, REGISTRY_STD};
 use std::collections::{HashMap, HashSet};
 use crate::lexer::TokenType;
@@ -8,9 +8,21 @@ pub enum Value {
     Number(f64),
     String(String),
     Bool(bool),
-    Array(Vec<Value>),
-    Object(HashMap<String, Value>),
+    Collection(CValue),
     Nil,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CValue {
+    pub entries: HashMap<CKey, Value>,
+    pub size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CKey {
+    Index(usize),
+    String(String),
+    Number(String),
 }
 
 pub trait Method {
@@ -21,14 +33,14 @@ pub trait Method {
 impl Method for Value {
     fn call_method(&mut self, method: &str, args: &[Value]) -> Result<Value, String> {
         match self {
-            Value::Array(arr) => {
+            Value::Collection(c) => {
                 match method {
                     "push" => {
                         if args.len() != 1 {
                             return Err(format!("push method on array expects 1 argument, got {}", args.len()));
                         }
 
-                        arr.push(args[0].clone());
+                        c.push(args[0].clone());
                         Ok(Value::Nil)
                     },
 
@@ -37,7 +49,7 @@ impl Method for Value {
                             return Err(format!("pop method on array expects no argument, got {}", args.len()));
                         }
 
-                        Ok(arr.pop().unwrap_or(Value::Nil))
+                        Ok(c.pop().unwrap_or(Value::Nil))
                     },
 
                     "size" => {
@@ -45,44 +57,43 @@ impl Method for Value {
                             return Err(format!("size method on array expects no argument, got {}", args.len()));
                         }
 
-                        Ok(Value::Number(arr.len() as f64))
+                        Ok(Value::Number(c.len() as f64))
                     },
 
                     "get" => {
                         if args.len() != 1 {
-                            return Err(format!("get method on array expects 1 argument, got {}", args.len()));
+                            return Err(format!("get method expects 1 argument, got {}", args.len()));
                         }
 
-                        if let Value::Number(i) = &args[0] {
-                            let idx = *i as usize;
+                        let key = match &args[0] {
+                            Value::Number(n) => CKey::Index(*n as usize),
+                            Value::String(s) => CKey::String(s.clone()),
+                            _ => return Err("collection key must be a number or string".to_string()),
+                        };
 
-                            if idx < arr.len() {
-                                Ok(arr[idx].clone())
-                            } else {
-                                Err(format!("index {} is out of bounds!", idx))
-                            }
-                        } else {
-                            Err("array index must be a number.".to_string())
-                        }
+                        Ok(c.get(&key).cloned().unwrap_or(Value::Nil))
                     },
 
                     "insert" => {
                         if args.len() != 2 {
-                            return Err(format!("insert method on array expects 2 arguments, got {}", args.len()));
+                            return Err(format!("insert method expects 2 arguments, got {}", args.len()));
                         }
 
-                        if let Value::Number(i) = &args[0] {
-                            let idx = *i as usize;
+                        let key = match &args[0] {
+                            Value::Number(n) => {
+                                let idx = *n as usize;
+                                if c.is_array_like() && idx > c.size {
+                                    return Err(format!("index {} is out of bounds", idx));
+                                }
+                                CKey::Index(idx)
+                            },
 
-                            if idx <= arr.len() {
-                                arr.insert(idx, args[1].clone());
-                                Ok(Value::Nil)
-                            } else {
-                                Err(format!("index {} is out of bounds!", idx))
-                            }
-                        } else {
-                            Err("insert index must be a number.".to_string())
-                        }
+                            Value::String(s) => CKey::String(s.clone()),
+                            _ => return Err("insert key must be a number or string".to_string()),
+                        };
+
+                        c.insert(key, args[1].clone());
+                        Ok(Value::Nil)
                     },
 
                     _ => Err(format!("unknown method '{}' for array.", method))
@@ -99,20 +110,8 @@ impl Method for Value {
                         Ok(Value::Number(s.len() as f64))
                     },
 
-                    "test" => {
-                        if args.len() != 0 {
-                            return Err(format!("len method on string expects no arguments, got {}", args.len()));
-                        }
-
-                        Ok(Value::Number(s.len() as f64))
-                    },
-
                     _ => Err(format!("unknown method '{}' for string.", method))
                 }
-            },
-
-            Value::Object(_) => {
-                Err(format!("unknown method '{}' for object.", method))
             },
 
             _ => Err(format!("cannot call method '{}' on {:?}", method, self.type_name())),
@@ -121,7 +120,7 @@ impl Method for Value {
 
     fn got_method(&self, method: &str) -> bool {
         match self {
-            Value::Array(_) => matches!(method, "push" | "pop" | "size" | "get" | "insert"),
+            Value::Collection(_) => matches!(method, "push" | "pop" | "size" | "get" | "insert"),
             Value::String(_) => matches!(method, "len"),
             _ => false
         }
@@ -135,24 +134,35 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Nil => write!(f, "nil"),
             Value::Bool(b) => write!(f, "{}", b),
-            Value::Array(arr) => {
-                write!(f, "[")?;
-                for (i, val) in arr.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
-                    write!(f, "{}", val)?;
+            Value::Collection(c) => {
+                if c.is_array_like() {
+                    write!(f, "[")?;
+                    let mut first = true;
+                    for i in 0..c.size {
+                        if !first { write!(f, ", ")?; }
+                        if let Some(val) = c.get_by_index(i) {
+                            write!(f, "{}", val)?;
+                        } else {
+                            write!(f, "nil")?;
+                        }
+                        first = false;
+                    }
+                    write!(f, "]")
+                } else {
+                    write!(f, "[")?;
+                    let mut first = true;
+                    for (key, value) in &c.entries {
+                        if !first { write!(f, ", ")?; }
+                        match key {
+                            CKey::String(s) => write!(f, "{} = {}", s, value)?,
+                            CKey::Number(n) => write!(f, "{} = {}", n, value)?,
+                            CKey::Index(i) => write!(f, "{} = {}", i, value)?,
+                        }
+                        first = false;
+                    }
+                    write!(f, "]")
                 }
-                write!(f, "]")
-            },
-            Value::Object(obj) => {
-                write!(f, "{{")?;
-                let mut first = true;
-                for (key, value) in obj {
-                    if !first { write!(f, ", ")?; }
-                    write!(f, "{}: {}", key, value)?;
-                    first = false;
-                }
-                write!(f, "}}")
-            },
+            }
         }
     }
 }
@@ -223,7 +233,7 @@ impl Interpreter {
             Expr::String(s) => Ok(Value::String(s.to_string())),
             Expr::Identifier(name) => self.vars.get(name).cloned().ok_or_else(|| format!("undefined variable or reference '{}'", name)),
             Expr::Call(c) => self.exec_call(c),
-            Expr::Array(a) => self.exec_array(a),
+            Expr::Collection(c) => self.exec_collection(c),
             Expr::IndexAccess(ia) => self.exec_idx_access(ia),
             Expr::MethodCall(mc) => self.exec_method_call(mc),
             Expr::VarDecl(v) => self.exec_var_decl(v),
@@ -233,26 +243,44 @@ impl Interpreter {
             Expr::If(i) => self.exec_if(i),
             Expr::Block(b) => self.exec_block(b),
             Expr::Include(i) => self.load_module(&i.module),
-            Expr::Object(o) => self.exec_obj(o),
             Expr::FieldAccess(fa) => self.exec_fa(fa),
         }
     }
 
-    fn exec_obj(&mut self, o: &Object) -> Result<Value, String> {
-        let mut efields = HashMap::new();
-        for (key, val) in &o.fields {
-            let v = self.evaluate(val)?;
-            efields.insert(key.clone(), v);
+    fn exec_collection(&mut self, co: &Collection) -> Result<Value, String> {
+        let mut c = CValue::new();
+        let mut idx = 0;
+
+        for e in &co.entries {
+            match e {
+                CEntry::Indexed(ex) => {
+                    let v = self.evaluate(ex)?;
+                    c.insert(CKey::Index(idx), v);
+                    idx += 1;
+                },
+
+                CEntry::Keyed(k, ex) => {
+                    let v = self.evaluate(ex)?;
+                    c.insert(CKey::String(k.clone()), v);
+                },
+
+                CEntry::NumKeyed(n, ex) => {
+                    let v = self.evaluate(ex)?;
+                    c.insert(CKey::Number(n.to_string()), v);
+                },
+            }
         }
 
-        Ok(Value::Object(efields))
+        if idx > 0 { c.size = idx; }
+
+        Ok(Value::Collection(c))
     }
 
     fn exec_fa(&mut self, fa: &FieldAccess) -> Result<Value, String> {
         let ovalue = self.evaluate(&fa.object)?;
         match ovalue {
-            Value::Object(map) => {
-                map.get(&fa.field).cloned().ok_or_else(|| format!("undefined field '{}'", fa.field))
+            Value::Collection(c) => {
+                c.get_by_string(&fa.field).cloned().ok_or_else(|| format!("undefined field '{}'", fa.field))
             },
             _ => Err(format!("cannot access field '{}' on non object", fa.field))
         }
@@ -286,22 +314,39 @@ impl Interpreter {
     fn exec_array(&mut self, a: &Array) -> Result<Value, String> {
         let mut values = Vec::new();
         for v in &a.values { values.push(self.evaluate(v)?); }
-        Ok(Value::Array(values))
+        Ok(Value::Collection(CValue::from_array(values)))
     }
 
     fn exec_idx_access(&mut self, ia: &IndexAccess) -> Result<Value, String> {
-        let arr = self.evaluate(&ia.object)?;
+        // let arr = self.evaluate(&ia.object)?;
+        // let idx = self.evaluate(&ia.index)?;
+        // match (arr, idx) {
+        //     (Value::Array(a), Value::Number(n)) => {
+        //         let i = n as usize;
+        //         if i < a.len() {
+        //             Ok(a[i].clone())
+        //         } else {
+        //             Err(format!("array index {} is out of bounds.", i))
+        //         }
+        //     }
+        //     (arr, _) => Err(format!("cannot index into {:?}",arr))
+        // }
+
+        // changed to adapt to collection changes
+        let col = self.evaluate(&ia.object)?;
         let idx = self.evaluate(&ia.index)?;
-        match (arr, idx) {
-            (Value::Array(a), Value::Number(n)) => {
-                let i = n as usize;
-                if i < a.len() {
-                    Ok(a[i].clone())
-                } else {
-                    Err(format!("array index {} is out of bounds.", i))
-                }
+
+        match col {
+            Value::Collection(c) => {
+                let key = match idx {
+                    Value::Number(n) => CKey::Index(n as usize),
+                    Value::String(s) => CKey::String(s),
+                    _ => return Err("collection index must be a number or string".to_string()),
+                };
+
+                Ok(c.get(&key).cloned().unwrap_or(Value::Nil))
             }
-            (arr, _) => Err(format!("cannot index into {:?}",arr))
+            _ => Err(format!("cannot index into {}", col.type_name()))
         }
     }
 
@@ -483,7 +528,6 @@ impl PartialOrd for Value {
             (Value::Number(a), Value::Number(b)) => a.partial_cmp(b),
             (Value::String(a), Value::String(b)) => a.partial_cmp(b),
             (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
-            (Value::Object(_), Value::Object(_)) => None,
             _ => None,
         }
     }
@@ -496,14 +540,13 @@ impl Value {
             Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Bool(_) => "bool",
-            Value::Array(_) => "array",
-            Value::Object(_) => "struct",
+            Value::Collection(_) => "collection",
             Value::Nil => "nil",
         }
     }
 
-    pub fn new_object() -> Value {
-        Value::Object(HashMap::new())
+    pub fn new_collection() -> Value {
+        Value::Collection(CValue::new())
     }
 
     pub fn from_pairs(pairs: Vec<(String, Value)>) -> Value {
@@ -511,7 +554,8 @@ impl Value {
         for (key, value) in pairs {
             obj.insert(key, value);
         }
-        Value::Object(obj)
+
+        Value::Collection(CValue::from_object(obj))
     }
 
     pub fn as_string(self) -> Result<String, String> {
@@ -550,7 +594,89 @@ impl Value {
     pub fn is_truthy(&self) -> bool {
         match self {
             Value::Bool(false) | Value::Nil => false,
+            Value::Collection(c) if c.entries.is_empty() => false,
             _ => true,
         }
+    }
+}
+
+impl CValue {
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            size: 0
+        }
+    }
+
+    pub fn from_array(values: Vec<Value>) -> Self {
+        let mut entries = HashMap::new();
+        for (i, val) in values.iter().enumerate() {
+            entries.insert(CKey::Index(i), val.clone());
+        }
+
+        Self {
+            entries,
+            size: values.len()
+        }
+    }
+
+    pub fn from_object(obj: HashMap<String, Value>) -> Self {
+        let mut entries = HashMap::new();
+        for (k, val) in obj {
+            entries.insert(CKey::String(k), val.clone());
+        }
+
+        Self {
+            entries,
+            size: 0
+        }
+    }
+
+    pub fn get(&self, key: &CKey) -> Option<&Value> {
+        self.entries.get(key)
+    }
+
+    pub fn insert(&mut self, key: CKey, value: Value) {
+        if let CKey::Index(i) = &key {
+            if *i >= self.size {
+                self.size = *i + 1;
+            }
+        }
+
+        self.entries.insert(key, value);
+    }
+
+    pub fn push(&mut self, value: Value) {
+        self.entries.insert(CKey::Index(self.size), value);
+        self.size += 1;
+    }
+
+    pub fn pop(&mut self) -> Option<Value> {
+        if self.size == 0 {
+            return None;
+        }
+
+        self.size -= 1;
+        self.entries.remove(&CKey::Index(self.size))
+    }
+
+    pub fn len(&self) -> usize {
+        if self.is_array_like() {
+            self.size
+        } else {
+            self.entries.len()
+        }
+    }
+
+    pub fn is_array_like(&self) -> bool {
+        self.size > 0 || self.entries.keys().all(|k| matches!(k, CKey::Index(_)))
+    }
+
+    pub fn get_by_index(&self, index: usize) -> Option<&Value> {
+        self.entries.get(&CKey::Index(index))
+    }
+
+    pub fn get_by_string(&self, key: &str) -> Option<&Value> {
+        self.entries.get(&CKey::String(key.to_string()))
     }
 }

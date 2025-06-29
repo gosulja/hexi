@@ -1,6 +1,5 @@
 use crate::interpreter::Value;
 use super::Module;
-use std::fs;
 
 fn print_nfn(args: &[Value]) -> Result<Value, String> {
     for (i, arg) in args.iter().enumerate() {

@@ -1,7 +1,5 @@
-use std::collections::HashMap;
 use std::hash::Hash;
 use crate::lexer::TokenType;
-use crate::stdlib::Module;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -15,11 +13,12 @@ pub enum Expr {
     UnaryOp(UnaryOp),
     Block(Block),
     If(If),
-    Array(Array),
+    // Array(Array),
+    Collection(Collection), // this replaces both arrays and objects as one.
     IndexAccess(IndexAccess),
     MethodCall(MethodCall),
     Include(Include),
-    Object(Object),
+    // Object(Object),
     FieldAccess(FieldAccess),
 }
 
@@ -90,15 +89,25 @@ pub struct MethodCall {
     pub args: Vec<Expr>,
 }
 
-
 #[derive(Debug, Clone)]
-pub struct Object {
-    pub fields: HashMap<String, Expr>,
+pub struct Collection {
+    pub entries: Vec<CEntry>,
 }
 
-impl Object {
-    pub fn new(fields: HashMap<String, Expr>) -> Self {
-        Object { fields }
+#[derive(Debug, Clone)]
+pub enum CEntry {
+    Indexed(Expr),                      // [1, 2, 3]
+    Keyed(String, Expr),                // [name = "value"] -> like a map, so key -> value
+    NumKeyed(f64, Expr),                // [1 = "first", 2 = "second"] - num -> value
+}
+
+impl Collection {
+    pub fn new(entries: Vec<CEntry>) -> Collection {
+        Collection { entries }
+    }
+
+    pub fn empty() -> Self {
+        Collection { entries: vec![] }
     }
 }
 
@@ -178,12 +187,6 @@ impl Assignment {
 impl BinaryOp {
     pub fn new(left: Expr, right: Expr, op: TokenType) -> Self {
         BinaryOp { left: Box::new(left), right: Box::new(right), op }
-    }
-}
-
-impl Array {
-    pub fn new(values: Vec<Expr>) -> Self {
-        Array { values }
     }
 }
 

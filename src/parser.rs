@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use std::ptr::fn_addr_eq;
-use crate::ast::{Array, Assignment, BinaryOp, Block, Call, Expr, If, IndexAccess, MethodCall, UnaryOp, VarDecl, Include, Object, FieldAccess};
+use crate::ast::{Assignment, BinaryOp, Block, Call, Expr, If, IndexAccess, MethodCall, UnaryOp, VarDecl, Include, FieldAccess, Collection, CEntry};
 use crate::lexer::{Lexer, Token, TokenType};
 
 pub struct Parser<'a> {
@@ -127,50 +125,13 @@ impl<'a> Parser<'a> {
                 TokenType::String => self.parse_string(),
                 TokenType::Number => self.parse_number(),
                 TokenType::LParen => self.parse_grouped(),
-                TokenType::LBracket => self.parse_array(),
+                TokenType::LBracket => self.parse_collection(),
                 TokenType::LBrace => Ok(Expr::Block(self.parse_block()?)),
                 TokenType::If => self.parse_if(),
                 _ => Err(format!("unexpected token {:?}", t))
             }
             None => Err("unexpected eof".to_string())
         }
-    }
-
-    fn parse_obj(&mut self) -> Result<Expr, String> {
-        println!("{}", format!("{:?}", self.current));
-        self.consume(TokenType::LBrace)?;
-        println!("{}", format!("{:?}", self.current));
-
-        let mut fields = HashMap::new();
-
-        // empty
-        if self.check(&TokenType::RBrace) {
-            self.consume(TokenType::RBrace)?;
-            return Ok(Expr::Object(Object::new(fields)));
-        }
-
-        println!("{}", format!("{:?}", self.current));
-
-        loop {
-            // parse "key = value,"
-            let key = self.consume(TokenType::Ident)?.lexeme;
-            self.consume(TokenType::Equals)?;
-            let val = self.parse_expr()?;
-            fields.insert(key, val);
-
-            if self.check(&TokenType::RBrace) {
-                self.consume(TokenType::RBrace)?;
-                break;
-            }
-
-            self.consume(TokenType::Comma)?;
-            if self.check(&TokenType::RBrace) {
-                self.consume(TokenType::RBrace)?;
-                break;
-            }
-        }
-
-        Ok(Expr::Object(Object::new(fields)))
     }
 
     fn parse_include(&mut self) -> Result<Expr, String> {
@@ -243,34 +204,147 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_array(&mut self) -> Result<Expr, String> {
-        self.consume(TokenType::LBracket)?; // get passt [
-        let mut values = Vec::new(); // create a vec for the values within the array
-        // empty array? val some_array = []
+    // fn parse_array(&mut self) -> Result<Expr, String> {
+    //     self.consume(TokenType::LBracket)?; // get passt [
+    //     // let mut values = Vec::new(); // create a vec for the values within the array
+    //     // empty array? val some_array = []
+    //     if self.check(&TokenType::RBracket) {
+    //         self.consume(TokenType::RBracket)?;
+    //         return Ok(Expr::Array(Array::new(Vec::new())))
+    //     }
+    //
+    //     // push first
+    //     // val some_vec = [1, 2, 3, 4]
+    //     //                 ^
+    //     let first = self.parse_expr()?;
+    //
+    //     // here we would want to check if an '=' is after, first
+    //     // only if first is an identifier (for key)
+    //     // basically, check for: [key = value, ...]
+    //     if let Expr::Identifier(k) = first {
+    //         // is an equals? if there isnt
+    //         // just parse a normal array
+    //         // instead of an objecy
+    //         if self.check(&TokenType::Equals) {
+    //             return self.parse_obj(k);
+    //         }
+    //     }
+    //
+    //     // we can od it like this now
+    //     let mut values = vec![first];
+    //
+    //     // parse next value when we at a comma
+    //     while self.check(&TokenType::Comma) {
+    //         self.consume(TokenType::Comma)?;    // we at a comma? eat it.
+    //         // but lets also allow for a trailing comma
+    //         // val some = [1, 2, 3,]
+    //         //                    ^
+    //         if self.check(&TokenType::RBracket) { break; }
+    //
+    //         // and then parse the value
+    //         values.push(self.parse_expr()?);
+    //     }
+    //
+    //     self.consume(TokenType::RBracket)?; // end it of with ]
+    //     Ok(Expr::Array(Array::new(values)))
+    // }
+
+    fn parse_collection(&mut self) -> Result<Expr, String> {
+        // since a collection is an array and object
+        // in one, we need to keep this in mind
+        // so we need to conditionally parse this structure
+        self.consume(TokenType::LBracket)?;
+
+        // allow empty
+        // collection definitions
+        // e.g val people = []
+        // initially set to empty
         if self.check(&TokenType::RBracket) {
             self.consume(TokenType::RBracket)?;
-            return Ok(Expr::Array(Array::new(values)))
+            return Ok(Expr::Collection(Collection::empty()));   // use the handy empty constructor
         }
 
-        // push first
-        // val some_vec = [1, 2, 3, 4]
-        //                 ^
-        values.push(self.parse_expr()?);
+        let mut entries = vec![];
+        let mut idx = 0;    // index in the collection, default to 0
 
-        // parse next value when we at a comma
-        while self.check(&TokenType::Comma) {
-            self.consume(TokenType::Comma)?;    // we at a comma? eat it.
-            // but lets also allow for a trailing comma
-            // val some = [1, 2, 3,]
-            //                    ^
-            if self.check(&TokenType::RBracket) { break; }
+        loop {
+            // we need to specially handle the case where
+            // an identifier is followed by an equals
+            // carefully do this so we dont invoke a var decl
+            if self.check(&TokenType::Ident) {
+                let key = self.current_lex().unwrap().clone();
+                self.advance(); // eat identifier
 
-            // and then parse the value
-            values.push(self.parse_expr()?);
+                if self.check(&TokenType::Equals) {
+                    // so now we're parsing a key pair with value
+                    // e.g [a = 1]
+                    self.consume(TokenType::Equals)?;
+                    let val = self.parse_expr()?;
+                    entries.push(CEntry::Keyed(key, val));
+                } else {
+                    // this is an ordinary identifier reference which needs to be evaluated
+                    // so just go back and parse it as a normal expr
+                    let first = Expr::Identifier(key);  // since we've lost the previous identifier by eating it, simply create a new one
+                    entries.push(CEntry::Indexed(first));
+                    idx += 1;
+                }
+            } else {
+                // parse the first entry in the collection
+                let first = self.parse_expr()?;
+
+                // is it a key -> value ??
+                if self.check(&TokenType::Equals) {
+                    self.consume(TokenType::Equals)?;
+                    let value = self.parse_expr()?;
+
+                    // because we have different types of entries:
+                    // pub enum CEntry {
+                    //     Indexed(Expr),                      // [1, 2, 3]
+                    //     Keyed(String, Expr),                // [name = "value"] -> like a map, so key -> value
+                    //     NumKeyed(f64, Expr),                // [1 = "first", 2 = "second"] - num -> value
+                    // }
+                    // we need to differentriate the key
+                    match first {
+                        // map, key -> value
+                        // Expr::Identifier(k) => {
+                        //     println!("{}", k);
+                        //     entries.push(CEntry::Keyed(k, value))
+                        // },
+                        // lets also allow for string literals to be keys
+                        // map, string -> value
+                        Expr::String(s) => entries.push(CEntry::Keyed(s, value)),
+                        // indexed map (i guess lol?), num -> value
+                        Expr::Number(n) => entries.push(CEntry::NumKeyed(n, value)),
+                        // to be safe
+                        _ => return Err("invalid key usage type for collection structure entry.".to_string()),
+                    }
+                } else {
+                    // okay this is an ordinary indexed entry,
+                    // so automatically increment the index
+                    entries.push(CEntry::Indexed(first));
+                    idx += 1;
+                }
+            }
+
+            // so we want to continue if we encounter a comma
+            if self.check(&TokenType::Comma) {
+                self.consume(TokenType::Comma)?;    // eat the comma
+
+                // lets be nice and allow for trailing commas
+                // so shit like this: [1, 2, 3,]
+                //                            ^
+                if self.check(&TokenType::RBracket) {
+                    break;
+                }
+            } else if self.check(&TokenType::RBracket) {
+                break;
+            } else {
+                return Err("expected ',' or ']' to terminate collection definition.".to_string())
+            }
         }
 
-        self.consume(TokenType::RBracket)?; // end it of with ]
-        Ok(Expr::Array(Array::new(values)))
+        self.consume(TokenType::RBracket)?;
+        Ok(Expr::Collection(Collection::new(entries)))
     }
 
     fn parse_if(&mut self) -> Result<Expr, String> {

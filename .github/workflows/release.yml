@@ -122,12 +122,6 @@ jobs:
             ## 🚀 New Release: ${{ github.ref_name }}
             
             Cross-platform binaries for Windows, Linux, and macOS.
-            
-            ### Download the right version for your system:
-            - **Windows**: `hexi-*-windows-x86_64.zip`
-            - **Linux**: `hexi-*-linux-x86_64.tar.gz`
-            - **macOS Intel**: `hexi-*-macos-x86_64.tar.gz`
-            - **macOS Apple Silicon**: `hexi-*-macos-aarch64.tar.gz`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
