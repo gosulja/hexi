@@ -1,4 +1,4 @@
-# hexlang
+# hexi
 The Hex Language Interpreter.
 
 # Usage
